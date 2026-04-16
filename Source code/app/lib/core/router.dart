@@ -6,6 +6,7 @@ import 'package:app/screens/login_screen.dart';
 import 'package:app/screens/notifications_screen.dart';
 import 'package:app/screens/qr_scanner_screen.dart';
 import 'package:app/screens/register_screen.dart';
+import 'package:app/screens/trace_timeline_screen.dart';
 import 'package:app/screens/timeline_screen.dart';
 import 'package:flutter/material.dart';
 
@@ -29,11 +30,18 @@ class AppRouter {
         return _page(const HomeScreen());
 
       case timeline:
-      case trace:
-        final batchId = uri.queryParameters['batchId'] ??
+        final batchId =
+            uri.queryParameters['batchId'] ??
             uri.queryParameters['productId'] ??
             (settings.arguments as String?);
         return _page(TimelineScreen(initialBatchId: batchId));
+
+      case trace:
+        final productId =
+            uri.queryParameters['productId'] ??
+            uri.queryParameters['batchId'] ??
+            (settings.arguments as String?);
+        return _page(TraceTimelineScreen(productId: productId ?? ''));
 
       case login:
         return _page(const LoginScreen());
@@ -51,7 +59,8 @@ class AppRouter {
         return _page(const QrScannerScreen());
 
       case addEvent:
-        final batchId = uri.queryParameters['batchId'] ??
+        final batchId =
+            uri.queryParameters['batchId'] ??
             uri.queryParameters['productId'] ??
             (settings.arguments as String?);
         return _page(AddEventScreen(initialBatchId: batchId));

@@ -3,7 +3,7 @@ import FarmingArea from '../models/FarmingArea';
 import env from '../config/env';
 import { BadRequestError, NotFoundError } from '../utils/errors';
 import generateQR from '../utils/qrcode';
-import { createBatchOnChain } from './blockchain.service';
+import { createBatchOnChain } from './blockchain';
 import { notifyProductStatusChanged } from './notification.service';
 
 const isBlockchainConfigured = () =>
@@ -86,6 +86,7 @@ export const createProduct = async (
       const result = await createBatchOnChain(batchId);
       batchTxHash = result.txHash;
       product.onChainBatchId = batchId;
+      product.batchTxHash = result.txHash;
       product.status = 'active';
     } catch (error: any) {
       console.error('Blockchain createBatch failed:', error.message);

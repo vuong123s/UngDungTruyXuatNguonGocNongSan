@@ -12,7 +12,10 @@ export interface IProduct {
   qrcode?: string;
   status: 'draft' | 'active' | 'completed';
   onChainBatchId?: string;
+  batchTxHash?: string;
   created_by: Types.ObjectId;
+  createdAt?: Date;
+  updatedAt?: Date;
 }
 
 const productSchema = new Schema<IProduct>(
@@ -64,6 +67,9 @@ const productSchema = new Schema<IProduct>(
       default: 'draft',
     },
     onChainBatchId: {
+      type: String,
+    },
+    batchTxHash: {
       type: String,
     },
     created_by: {

@@ -11,6 +11,7 @@ import notificationRoutes from './notification.routes';
 import adminRoutes from './admin.routes';
 import searchRoutes from './search.routes';
 import auditLogRoutes from './auditLog.routes';
+import blockchainRoutes from './blockchain.routes';
 
 const router = Router();
 
@@ -26,5 +27,6 @@ router.use('/notifications', notificationRoutes);
 router.use('/admin', adminRoutes);
 router.use('/search', searchRoutes);
 router.use('/audit-logs', auditLogRoutes);
+router.use('/blockchain', blockchainRoutes);
 
 export default router;

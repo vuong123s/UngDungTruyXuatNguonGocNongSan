@@ -1,6 +1,8 @@
 export interface User {
   _id: string;
-  name: string;
+  name?: string;
+  first_name?: string;
+  last_name?: string;
   email: string;
   role: 'admin' | 'farmer' | 'viewer';
   phone?: string;
@@ -42,6 +44,7 @@ export interface Product {
   qrcode?: string;
   status: 'draft' | 'active' | 'completed';
   onChainBatchId?: string;
+  batchTxHash?: string;
   created_by: string | User;
   farming_area?: FarmingArea;
   createdAt: string;

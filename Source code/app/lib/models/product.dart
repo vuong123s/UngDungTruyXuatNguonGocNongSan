@@ -1,3 +1,5 @@
+import 'package:app/models/farming_area.dart';
+
 class Product {
   final String id;
   final String name;
@@ -7,8 +9,9 @@ class Product {
   final String type; // plant | animal
   final List<String> images;
   final String? onChainBatchId;
+  final String? batchTxHash;
   final String status; // draft | active | completed
-  final Map<String, dynamic>? farmingArea;
+  final FarmingArea? farmingArea;
   final DateTime? cultivationTime;
   final Map<String, dynamic>? createdBy;
   final DateTime? createdAt;
@@ -22,6 +25,7 @@ class Product {
     required this.type,
     required this.images,
     this.onChainBatchId,
+    this.batchTxHash,
     required this.status,
     this.farmingArea,
     this.cultivationTime,
@@ -39,9 +43,12 @@ class Product {
   /// Nhãn hiển thị trạng thái
   String get statusLabel {
     switch (status) {
-      case 'active': return 'Đang sản xuất';
-      case 'completed': return 'Hoàn thành';
-      default: return 'Nháp';
+      case 'active':
+        return 'Đang sản xuất';
+      case 'completed':
+        return 'Hoàn thành';
+      default:
+        return 'Nháp';
     }
   }
 
@@ -62,8 +69,11 @@ class Product {
     type: json['type'] as String? ?? 'plant',
     images: _parseImages(json['images']),
     onChainBatchId: json['onChainBatchId'] as String?,
+    batchTxHash: json['batchTxHash'] as String?,
     status: json['status'] as String? ?? 'draft',
-    farmingArea: json['farming_area'] as Map<String, dynamic>?,
+    farmingArea: json['farming_area'] is Map<String, dynamic>
+        ? FarmingArea.fromJson(json['farming_area'] as Map<String, dynamic>)
+        : null,
     cultivationTime: json['cultivation_time'] != null
         ? DateTime.tryParse(json['cultivation_time'] as String)
         : null,

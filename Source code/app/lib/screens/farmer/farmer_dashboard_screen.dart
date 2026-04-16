@@ -277,7 +277,7 @@ class _BatchCard extends StatelessWidget {
     final sortedEvents = [...batch.events]
       ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
     final latestEvent = sortedEvents.isEmpty ? null : sortedEvents.last;
-    final timelineRoute = '${AppRouter.timeline}?batchId=${batch.batchId}';
+    final timelineRoute = '${AppRouter.trace}?productId=${batch.batchId}';
     final addEventRoute = '${AppRouter.addEvent}?batchId=${batch.batchId}';
 
     return GlassPanel(
@@ -496,7 +496,7 @@ class _NotificationBellButton extends ConsumerWidget {
           ),
           unreadCountAsync.when(
             loading: () => const SizedBox.shrink(),
-            error: (_, __) => const SizedBox.shrink(),
+            error: (_, _) => const SizedBox.shrink(),
             data: (count) {
               if (count == 0) return const SizedBox.shrink();
               return Positioned(
