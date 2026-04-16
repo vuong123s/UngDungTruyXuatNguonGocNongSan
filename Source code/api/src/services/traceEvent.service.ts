@@ -15,37 +15,49 @@ import env from '../config/env';
 const isBlockchainConfigured = () =>
   !!(env.CONTRACT_ADDRESS && env.BLOCKCHAIN_PRIVATE_KEY);
 
-const normalizeImages = (
-  images?: Array<string | { path?: string; filename?: string }>
+const normalizeMedia = (
+  files?: Array<
+    string | { path?: string; filename?: string; mimeType?: string }
+  >
 ) => {
-  if (!Array.isArray(images)) return [];
+  if (!Array.isArray(files)) return [];
 
-  return images
-    .map((image) => {
-      if (typeof image === 'string') {
-        const normalizedPath = image.trim();
+  return files
+    .map((file) => {
+      if (typeof file === 'string') {
+        const normalizedPath = file.trim();
         if (!normalizedPath) return null;
 
         const parts = normalizedPath.split(/[\/]/);
         return {
           path: normalizedPath,
           filename: parts[parts.length - 1] || 'image',
+          mimeType: undefined,
         };
       }
 
-      if (image && typeof image === 'object') {
-        const normalizedPath = image.path?.trim();
+      if (file && typeof file === 'object') {
+        const normalizedPath = file.path?.trim();
         if (!normalizedPath) return null;
 
         return {
           path: normalizedPath,
-          filename: image.filename?.trim() || normalizedPath.split(/[\/]/).pop() || 'image',
+          filename:
+            file.filename?.trim() ||
+            normalizedPath.split(/[\/]/).pop() ||
+            'file',
+          mimeType: file.mimeType?.trim() || undefined,
         };
       }
 
       return null;
     })
-    .filter((image): image is { path: string; filename: string } => Boolean(image));
+    .filter(
+      (
+        file
+      ): file is { path: string; filename: string; mimeType: string | undefined } =>
+        Boolean(file)
+    );
 };
 
 export const createTraceEvent = async (
@@ -55,10 +67,18 @@ export const createTraceEvent = async (
     description: string;
     details?: Record<string, unknown>;
     images?: { path: string; filename: string }[];
+    videos?: { path: string; filename: string; mimeType?: string }[];
   },
   userId: string
 ) => {
-  const { product: productId, eventType, description, details, images } = data;
+  const {
+    product: productId,
+    eventType,
+    description,
+    details,
+    images,
+    videos,
+  } = data;
   const product = await Product.findById(productId);
 
   if (!product) {
@@ -66,7 +86,8 @@ export const createTraceEvent = async (
   }
 
   const batchId = product._id.toString();
-  const normalizedImages = normalizeImages(images);
+  const normalizedImages = normalizeMedia(images);
+  const normalizedVideos = normalizeMedia(videos);
 
   // Hash only core fields. Images stay off-chain.
   const coreData: Record<string, unknown> = {
@@ -84,6 +105,7 @@ export const createTraceEvent = async (
     description,
     details: details || {},
     images: normalizedImages,
+    videos: normalizedVideos,
     recorded_by: userId,
     onChainStatus: 'pending',
   });

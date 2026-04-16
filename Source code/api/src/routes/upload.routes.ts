@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { upload } from '../config/upload';
+import { upload, uploadMedia } from '../config/upload';
 import * as uploadController from '../controllers/upload.controller';
 import { authenticate } from '../middlewares/auth.middleware';
 
@@ -17,6 +17,13 @@ router.post(
   authenticate,
   upload.array('images', 5),
   uploadController.uploadMultiple
+);
+
+router.post(
+  '/media',
+  authenticate,
+  uploadMedia.array('files', 10),
+  uploadController.uploadMediaFiles
 );
 
 router.delete('/:filename', authenticate, uploadController.deleteImage);

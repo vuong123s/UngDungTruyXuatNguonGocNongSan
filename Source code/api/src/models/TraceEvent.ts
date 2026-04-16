@@ -19,6 +19,7 @@ export interface ITraceEvent {
   description: string;
   details?: Record<string, unknown>;
   images: { path: string; filename: string }[];
+  videos: { path: string; filename: string; mimeType?: string }[];
   recorded_by: Types.ObjectId;
   dataHash?: string;
   txHash?: string;
@@ -56,6 +57,10 @@ const traceEventSchema = new Schema<ITraceEvent>(
     },
     images: {
       type: [{ path: String, filename: String }],
+      default: [],
+    },
+    videos: {
+      type: [{ path: String, filename: String, mimeType: String }],
       default: [],
     },
     recorded_by: {

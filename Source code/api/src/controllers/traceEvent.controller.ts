@@ -4,9 +4,9 @@ import * as traceService from '../services/traceEvent.service';
 
 export const createTraceEvent = async (req: Request, res: Response) => {
   const userId = req.user!.userId;
-  const { product, eventType, description, details, images } = req.body;
+  const { product, eventType, description, details, images, videos } = req.body;
   const result = await traceService.createTraceEvent(
-    { product, eventType, description, details, images },
+    { product, eventType, description, details, images, videos },
     userId
   );
 

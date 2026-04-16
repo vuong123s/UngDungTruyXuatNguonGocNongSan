@@ -10,6 +10,11 @@ interface ImageResponse {
   filename: string;
 }
 
+interface MediaResponse extends ImageResponse {
+  mimeType: string;
+  mediaType: 'image' | 'video';
+}
+
 export const uploadSingle = async (req: Request, res: Response) => {
   if (!req.file) {
     throw new BadRequestError('Vui lòng chọn file ảnh để tải lên');
@@ -34,6 +39,21 @@ export const uploadMultiple = async (req: Request, res: Response) => {
   }));
 
   res.status(StatusCodes.CREATED).json(images);
+};
+
+export const uploadMediaFiles = async (req: Request, res: Response) => {
+  if (!req.files || !Array.isArray(req.files) || req.files.length === 0) {
+    throw new BadRequestError('Vui lòng chọn ít nhất một file ảnh hoặc video để tải lên');
+  }
+
+  const files: MediaResponse[] = req.files.map((file) => ({
+    path: `/${UPLOAD_PATH}/${file.filename}`,
+    filename: file.filename,
+    mimeType: file.mimetype,
+    mediaType: file.mimetype.startsWith('video/') ? 'video' : 'image',
+  }));
+
+  res.status(StatusCodes.CREATED).json({ files, count: files.length });
 };
 
 export const deleteImage = async (req: Request, res: Response) => {

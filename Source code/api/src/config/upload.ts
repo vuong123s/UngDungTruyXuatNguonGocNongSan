@@ -4,7 +4,16 @@ import { BadRequestError } from '../utils/errors';
 
 const UPLOAD_DIR = 'uploads';
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+const MAX_MEDIA_FILE_SIZE = 50 * 1024 * 1024; // 50MB
 const ALLOWED_MIMETYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+const ALLOWED_MEDIA_MIMETYPES = [
+  ...ALLOWED_MIMETYPES,
+  'video/mp4',
+  'video/quicktime',
+  'video/x-msvideo',
+  'video/x-matroska',
+  'video/webm',
+];
 
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => {
@@ -25,11 +34,27 @@ const fileFilter: multer.Options['fileFilter'] = (_req, file, cb) => {
   }
 };
 
+const mediaFileFilter: multer.Options['fileFilter'] = (_req, file, cb) => {
+  if (ALLOWED_MEDIA_MIMETYPES.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(new BadRequestError('Chỉ chấp nhận ảnh hoặc video (mp4, mov, avi, mkv, webm)'));
+  }
+};
+
 export const upload = multer({
   storage,
   fileFilter,
   limits: {
     fileSize: MAX_FILE_SIZE,
+  },
+});
+
+export const uploadMedia = multer({
+  storage,
+  fileFilter: mediaFileFilter,
+  limits: {
+    fileSize: MAX_MEDIA_FILE_SIZE,
   },
 });
 
