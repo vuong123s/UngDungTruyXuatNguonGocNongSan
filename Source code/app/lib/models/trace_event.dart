@@ -6,6 +6,7 @@ class TraceEvent {
   final String description;
   final Map<String, dynamic>? details;
   final List<String> images;
+  final List<String> videos;
   final String? dataHash;
   final String? txHash;
   final int? blockNumber;
@@ -21,6 +22,7 @@ class TraceEvent {
     required this.description,
     this.details,
     required this.images,
+    this.videos = const [],
     this.dataHash,
     this.txHash,
     this.blockNumber,
@@ -38,9 +40,22 @@ class TraceEvent {
     eventType: json['eventType'] as String,
     description: json['description'] as String? ?? '',
     details: json['details'] as Map<String, dynamic>?,
-    images:
-        (json['images'] as List<dynamic>?)?.map((e) => e.toString()).toList() ??
-        [],
+    images: (json['images'] as List<dynamic>? ?? const [])
+        .map(
+          (item) => item is Map<String, dynamic>
+              ? (item['path'] ?? item['url'] ?? '').toString()
+              : item.toString(),
+        )
+        .where((item) => item.isNotEmpty)
+        .toList(),
+    videos: (json['videos'] as List<dynamic>? ?? const [])
+        .map(
+          (item) => item is Map<String, dynamic>
+              ? (item['path'] ?? item['url'] ?? '').toString()
+              : item.toString(),
+        )
+        .where((item) => item.isNotEmpty)
+        .toList(),
     dataHash: json['dataHash'] as String?,
     txHash: json['txHash'] as String?,
     blockNumber: json['blockNumber'] as int?,

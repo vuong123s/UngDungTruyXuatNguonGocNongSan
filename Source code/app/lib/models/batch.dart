@@ -2,7 +2,9 @@
   final String id;
   final String actionType;
   final String note;
+  final Map<String, dynamic> details;
   final List<String> imageUrls;
+  final List<String> videoUrls;
   final String? dataHash;
   final String? transactionHash;
   final int? blockNumber;
@@ -14,7 +16,9 @@
     required this.id,
     required this.actionType,
     required this.note,
+    required this.details,
     required this.imageUrls,
+    required this.videoUrls,
     required this.dataHash,
     required this.transactionHash,
     required this.blockNumber,
@@ -28,7 +32,13 @@
       id: (json['_id'] ?? '').toString(),
       actionType: (json['actionType'] ?? '').toString(),
       note: (json['note'] ?? '').toString(),
+      details: json['details'] is Map<String, dynamic>
+          ? (json['details'] as Map<String, dynamic>)
+          : const {},
       imageUrls: (json['imageUrls'] as List<dynamic>? ?? const [])
+          .map((item) => item.toString())
+          .toList(),
+      videoUrls: (json['videoUrls'] as List<dynamic>? ?? const [])
           .map((item) => item.toString())
           .toList(),
       dataHash: json['dataHash']?.toString(),
@@ -38,7 +48,8 @@
           : null,
       actor: json['actor']?.toString(),
       onChainStatus: (json['onChainStatus'] ?? 'pending').toString(),
-      createdAt: DateTime.tryParse((json['createdAt'] ?? '').toString()) ??
+      createdAt:
+          DateTime.tryParse((json['createdAt'] ?? '').toString()) ??
           DateTime.now(),
     );
   }
@@ -112,4 +123,3 @@ class CreateEventResult {
     );
   }
 }
-

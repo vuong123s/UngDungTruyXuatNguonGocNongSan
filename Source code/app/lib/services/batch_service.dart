@@ -1,7 +1,28 @@
 import 'package:app/core/api_client.dart';
 import 'package:app/models/batch.dart';
 import 'package:dio/dio.dart';
+import 'package:http_parser/http_parser.dart';
 import 'package:image_picker/image_picker.dart';
+
+class _UploadedMedia {
+  const _UploadedMedia({
+    required this.path,
+    required this.filename,
+    required this.mediaType,
+    this.mimeType,
+  });
+
+  final String path;
+  final String filename;
+  final String mediaType;
+  final String? mimeType;
+
+  Map<String, dynamic> toTracePayload() => {
+    'path': path,
+    'filename': filename,
+    if (mimeType != null && mimeType!.isNotEmpty) 'mimeType': mimeType,
+  };
+}
 
 class BatchService {
   BatchService({Dio? dio}) : _dio = dio ?? ApiClient.instance.dio;
@@ -50,16 +71,28 @@ class BatchService {
     required String actionType,
     required String note,
     required List<XFile> images,
+    List<XFile> videos = const [],
+    Map<String, dynamic>? details,
   }) async {
+    final uploadedMedia = await _uploadMediaFiles([...images, ...videos]);
+    final imagePayload = uploadedMedia
+        .where((item) => item.mediaType == 'image')
+        .map((item) => item.toTracePayload())
+        .toList();
+    final videoPayload = uploadedMedia
+        .where((item) => item.mediaType == 'video')
+        .map((item) => item.toTracePayload())
+        .toList();
+
     final response = await _dio.post(
       '/trace/events',
       data: {
         'product': batchId,
         'eventType': actionType,
         'description': note,
-        'images': images
-            .map((image) => {'path': image.path, 'filename': image.name})
-            .toList(),
+        'details': details ?? const {},
+        'images': imagePayload,
+        'videos': videoPayload,
       },
     );
 
@@ -115,11 +148,26 @@ class BatchService {
       id: (event['_id'] ?? '').toString(),
       actionType: (event['eventType'] ?? event['actionType'] ?? '').toString(),
       note: (event['description'] ?? event['note'] ?? '').toString(),
+      details: event['details'] is Map<String, dynamic>
+          ? (event['details'] as Map<String, dynamic>)
+          : const {},
       imageUrls: (event['images'] as List<dynamic>? ?? const [])
           .map(
             (item) => item is Map<String, dynamic>
-                ? (item['path'] ?? item['url'] ?? '').toString()
-                : item.toString(),
+                ? _resolveMediaUrl(
+                    (item['path'] ?? item['url'] ?? '').toString(),
+                  )
+                : _resolveMediaUrl(item.toString()),
+          )
+          .where((item) => item.isNotEmpty)
+          .toList(),
+      videoUrls: (event['videos'] as List<dynamic>? ?? const [])
+          .map(
+            (item) => item is Map<String, dynamic>
+                ? _resolveMediaUrl(
+                    (item['path'] ?? item['url'] ?? '').toString(),
+                  )
+                : _resolveMediaUrl(item.toString()),
           )
           .where((item) => item.isNotEmpty)
           .toList(),
@@ -139,5 +187,89 @@ class BatchService {
           DateTime.tryParse((event['createdAt'] ?? '').toString()) ??
           DateTime.now(),
     );
+  }
+
+  Future<List<_UploadedMedia>> _uploadMediaFiles(List<XFile> files) async {
+    if (files.isEmpty) return const [];
+
+    final formData = FormData();
+    for (final file in files) {
+      final contentType = _guessMediaType(file.name);
+      final bytes = await file.readAsBytes();
+      formData.files.add(
+        MapEntry(
+          'files',
+          MultipartFile.fromBytes(
+            bytes,
+            filename: file.name,
+            contentType: contentType,
+          ),
+        ),
+      );
+    }
+
+    final response = await _dio.post('/upload/media', data: formData);
+    final payload = response.data;
+
+    final list = payload is Map<String, dynamic>
+        ? (payload['files'] as List<dynamic>? ?? const [])
+        : const <dynamic>[];
+
+    return list.map((item) {
+      final map = item as Map<String, dynamic>;
+      final path = (map['path'] ?? '').toString();
+      final filename = (map['filename'] ?? '').toString();
+      final mediaType = (map['mediaType'] ?? 'image').toString();
+      final mimeType = map['mimeType']?.toString();
+
+      return _UploadedMedia(
+        path: path,
+        filename: filename,
+        mediaType: mediaType,
+        mimeType: mimeType,
+      );
+    }).toList();
+  }
+
+  String _resolveMediaUrl(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return '';
+
+    if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
+      return trimmed;
+    }
+
+    final baseUri = Uri.parse(_dio.options.baseUrl);
+    final rootUri = baseUri.replace(path: '/', query: '', fragment: '');
+    final normalized = trimmed.startsWith('/') ? trimmed : '/$trimmed';
+    return rootUri.resolve(normalized).toString();
+  }
+
+  MediaType _guessMediaType(String fileName) {
+    final ext = fileName.split('.').last.toLowerCase();
+
+    switch (ext) {
+      case 'jpg':
+      case 'jpeg':
+        return MediaType('image', 'jpeg');
+      case 'png':
+        return MediaType('image', 'png');
+      case 'gif':
+        return MediaType('image', 'gif');
+      case 'webp':
+        return MediaType('image', 'webp');
+      case 'mp4':
+        return MediaType('video', 'mp4');
+      case 'mov':
+        return MediaType('video', 'quicktime');
+      case 'avi':
+        return MediaType('video', 'x-msvideo');
+      case 'mkv':
+        return MediaType('video', 'x-matroska');
+      case 'webm':
+        return MediaType('video', 'webm');
+      default:
+        return MediaType('application', 'octet-stream');
+    }
   }
 }
