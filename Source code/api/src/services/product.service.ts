@@ -1,7 +1,12 @@
-import Product from '../models/Product';
+import Product, { ILiveCamera } from '../models/Product';
+import TraceEvent from '../models/TraceEvent';
 import FarmingArea from '../models/FarmingArea';
+import InventoryTransaction from '../models/InventoryTransaction';
+import QualityInspection from '../models/QualityInspection';
+import DiseaseDetection from '../models/DiseaseDetection';
+import SupplyChainRecord from '../models/SupplyChainRecord';
 import env from '../config/env';
-import { BadRequestError, NotFoundError } from '../utils/errors';
+import { BadRequestError, NotFoundError, UnauthorizedError } from '../utils/errors';
 import generateQR from '../utils/qrcode';
 import { createBatchOnChain } from './blockchain.service';
 import { notifyProductStatusChanged } from './notification.service';
@@ -9,8 +14,60 @@ import { notifyProductStatusChanged } from './notification.service';
 const isBlockchainConfigured = () =>
   !!(env.CONTRACT_ADDRESS && env.BLOCKCHAIN_PRIVATE_KEY);
 
+const activeProductQuery = { isDeleted: { $ne: true } };
+
+const assertFarmingAreaAccess = async (
+  farmingAreaId: string | undefined,
+  userId: string,
+  userRole: string
+) => {
+  if (!farmingAreaId) return null;
+
+  const farmingArea = await FarmingArea.findById(farmingAreaId);
+  if (!farmingArea) {
+    throw new NotFoundError(`Không tìm thấy vùng trồng ${farmingAreaId}`);
+  }
+
+  if (userRole === 'farmer' && farmingArea.owner.toString() !== userId) {
+    throw new UnauthorizedError('Bạn chỉ được gắn lô vào vùng trồng của mình');
+  }
+
+  return farmingArea;
+};
+
+const pickProductUpdate = (
+  data: Partial<{
+    name: string;
+    category: string;
+    description: string;
+    origin: string;
+    cultivation_time: string;
+    status: string;
+    farming_area: string;
+    live_cameras: ILiveCamera[];
+  }>
+) => {
+  const allowed: Record<string, unknown> = {};
+  const keys = [
+    'name',
+    'category',
+    'description',
+    'origin',
+    'cultivation_time',
+    'status',
+    'farming_area',
+    'live_cameras',
+  ] as const;
+
+  for (const key of keys) {
+    if (key in data) allowed[key] = data[key];
+  }
+
+  return allowed;
+};
+
 export const getAllProducts = async () => {
-  return Product.find({})
+  return Product.find(activeProductQuery)
     .populate('created_by', 'first_name last_name email')
     .populate({
       path: 'farming_area',
@@ -22,8 +79,41 @@ export const getAllProducts = async () => {
     });
 };
 
+export const getProductsForUser = async (userId: string, userRole: string) => {
+  const query =
+    userRole === 'farmer'
+      ? { ...activeProductQuery, created_by: userId }
+      : activeProductQuery;
+  const products = await Product.find(query)
+    .populate('created_by', 'first_name last_name email')
+    .populate('farming_area', 'name address area_size')
+    .lean();
+
+  const productIds = products.map((product) => product._id);
+  const events = await TraceEvent.find({ product: { $in: productIds } })
+    .select(
+      'product eventType description details images videos dataHash txHash blockNumber actionIndex recorded_by onChainStatus createdAt'
+    )
+    .populate('recorded_by', 'first_name last_name')
+    .sort({ createdAt: 1 })
+    .lean();
+
+  const eventsByProduct = new Map<string, typeof events>();
+  for (const event of events) {
+    const productId = event.product.toString();
+    const current = eventsByProduct.get(productId) || [];
+    current.push(event);
+    eventsByProduct.set(productId, current);
+  }
+
+  return products.map((product) => ({
+    ...product,
+    events: eventsByProduct.get(product._id.toString()) || [],
+  }));
+};
+
 export const getProductById = async (productId: string) => {
-  const product = await Product.findById(productId)
+  const product = await Product.findOne({ _id: productId, ...activeProductQuery })
     .populate('created_by', 'first_name last_name email')
     .populate({
       path: 'farming_area',
@@ -47,6 +137,14 @@ export const getProductById = async (productId: string) => {
   return product;
 };
 
+export const getDeletedProducts = async () => {
+  return Product.find({ isDeleted: true })
+    .populate('created_by', 'first_name last_name email')
+    .populate('deleted_by', 'first_name last_name email')
+    .populate('farming_area', 'name address area_size')
+    .sort({ deletedAt: -1, updatedAt: -1 });
+};
+
 export const createProduct = async (
   data: {
     name: string;
@@ -55,27 +153,47 @@ export const createProduct = async (
     description: string;
     origin?: string;
     cultivation_time?: string;
+    initial_quantity?: number;
+    current_quantity?: number;
+    unit?: string;
     images?: { path: string; filename: string }[];
+    live_cameras?: ILiveCamera[];
     farming_area?: string;
   },
-  userId: string
+  userId: string,
+  userRole: string
 ) => {
   if (!data.name || !data.category || !data.type || !data.description) {
     throw new BadRequestError('Vui lòng điền đầy đủ thông tin sản phẩm');
   }
 
+  const farmingArea = await assertFarmingAreaAccess(
+    data.farming_area,
+    userId,
+    userRole
+  );
+
   // Auto-fill origin from farming area if not provided
   let origin = data.origin;
-  if (data.farming_area && !origin) {
-    const farmingArea = await FarmingArea.findById(data.farming_area);
-    if (farmingArea) {
-      origin = farmingArea.address;
-    }
+  if (farmingArea && !origin) {
+    origin = farmingArea.address;
+  }
+
+  const initialQuantity = Number(data.initial_quantity ?? data.current_quantity ?? 0);
+  if (!Number.isFinite(initialQuantity) || initialQuantity < 0) {
+    throw new BadRequestError('Số lượng ban đầu không hợp lệ');
+  }
+  const currentQuantity = Number(data.current_quantity ?? initialQuantity);
+  if (!Number.isFinite(currentQuantity) || currentQuantity < 0) {
+    throw new BadRequestError('Số lượng tồn không hợp lệ');
   }
 
   const product = await Product.create({ 
     ...data, 
     origin: origin || 'Việt Nam',
+    initial_quantity: initialQuantity,
+    current_quantity: currentQuantity,
+    unit: data.unit?.trim() || 'kg',
     created_by: userId 
   });
   const batchId = product._id.toString();
@@ -98,6 +216,19 @@ export const createProduct = async (
   product.qrcode = qrcode;
   await product.save();
 
+  if (currentQuantity > 0) {
+    await InventoryTransaction.create({
+      product: product._id,
+      type: 'INITIAL',
+      quantity: currentQuantity,
+      unit: product.unit || 'kg',
+      balance_before: 0,
+      balance_after: currentQuantity,
+      note: 'Tạo lô ban đầu',
+      created_by: userId,
+    });
+  }
+
   // Populate farming_area for response
   await product.populate({
     path: 'farming_area',
@@ -119,19 +250,42 @@ export const updateProduct = async (
     description: string;
     origin: string;
     cultivation_time: string;
+    initial_quantity: number;
+    current_quantity: number;
+    unit: string;
     status: string;
     farming_area: string;
-  }>
+    live_cameras: ILiveCamera[];
+  }>,
+  userId: string,
+  userRole: string
 ) => {
   // Get the current product to check for status change
-  const currentProduct = await Product.findById(productId);
+  const currentProduct = await Product.findOne({ _id: productId, ...activeProductQuery });
   if (!currentProduct) {
     throw new NotFoundError(`Không tìm thấy sản phẩm ${productId}`);
   }
 
+  if (userRole === 'farmer' && currentProduct.created_by.toString() !== userId) {
+    throw new UnauthorizedError('Bạn chỉ được chỉnh sửa lô do mình quản lý');
+  }
+
+  await assertFarmingAreaAccess(data.farming_area, userId, userRole);
+
+  if (
+    'initial_quantity' in data ||
+    'current_quantity' in data ||
+    'unit' in data
+  ) {
+    throw new BadRequestError(
+      'Vui lòng cập nhật số lượng qua chức năng tồn kho để hệ thống ghi nhận lịch sử'
+    );
+  }
+
   const oldStatus = currentProduct.status;
   
-  const product = await Product.findByIdAndUpdate(productId, data, {
+  const safeData = pickProductUpdate(data);
+  const product = await Product.findOneAndUpdate({ _id: productId, ...activeProductQuery }, safeData, {
     new: true,
     runValidators: true,
   });
@@ -156,12 +310,117 @@ export const updateProduct = async (
   return product;
 };
 
-export const deleteProduct = async (productId: string) => {
-  const product = await Product.findByIdAndDelete(productId);
+export const updateProductCameras = async (
+  productId: string,
+  liveCameras: ILiveCamera[],
+  userId: string,
+  userRole: string
+) => {
+  const product = await Product.findOne({ _id: productId, ...activeProductQuery });
+  if (!product) {
+    throw new NotFoundError(`Không tìm thấy sản phẩm ${productId}`);
+  }
+
+  if (userRole === 'farmer' && product.created_by.toString() !== userId) {
+    throw new UnauthorizedError('Bạn không có quyền quản lý camera của lô này');
+  }
+
+  const invalid = liveCameras.find(
+    (camera) => !camera.name?.trim() || !camera.stream_url?.trim()
+  );
+  if (invalid) {
+    throw new BadRequestError('Mỗi camera cần có tên và URL live stream');
+  }
+
+  product.live_cameras = liveCameras.map((camera) => ({
+    name: camera.name.trim(),
+    stream_url: camera.stream_url.trim(),
+    location: camera.location?.trim() || '',
+    is_active: camera.is_active !== false,
+    thumbnail: camera.thumbnail,
+  }));
+
+  await product.save();
+  return product;
+};
+
+export const deleteProduct = async (productId: string, userId: string) => {
+  const product = await Product.findOneAndUpdate(
+    { _id: productId, ...activeProductQuery },
+    {
+      $set: {
+        isDeleted: true,
+        deletedAt: new Date(),
+        deleted_by: userId,
+        status: 'completed',
+      },
+    },
+    { new: true }
+  );
 
   if (!product) {
     throw new NotFoundError(`Kh?ng t?m th?y s?n ph?m ${productId}`);
   }
 
+  return product;
+};
+
+export const restoreProduct = async (productId: string) => {
+  const product = await Product.findOneAndUpdate(
+    { _id: productId, isDeleted: true },
+    {
+      $set: { isDeleted: false },
+      $unset: { deletedAt: 1, deleted_by: 1 },
+    },
+    { new: true, runValidators: true }
+  )
+    .populate('created_by', 'first_name last_name email')
+    .populate('farming_area', 'name address area_size');
+
+  if (!product) {
+    throw new NotFoundError(`Không tìm thấy lô đã lưu trữ ${productId}`);
+  }
+
+  return product;
+};
+
+export const permanentlyDeleteProduct = async (productId: string) => {
+  const product = await Product.findOne({ _id: productId, isDeleted: true });
+  if (!product) {
+    throw new NotFoundError(`Không tìm thấy lô đã lưu trữ ${productId}`);
+  }
+
+  const [
+    traceEventCount,
+    qualityInspectionCount,
+    diseaseDetectionCount,
+    supplyChainRecordCount,
+    inventoryTransactionCount,
+  ] = await Promise.all([
+    TraceEvent.countDocuments({ product: productId }),
+    QualityInspection.countDocuments({ product: productId }),
+    DiseaseDetection.countDocuments({ product: productId }),
+    SupplyChainRecord.countDocuments({
+      $or: [{ product: productId }, { related_products: productId }],
+    }),
+    InventoryTransaction.countDocuments({
+      $or: [{ product: productId }, { related_products: productId }],
+    }),
+  ]);
+
+  const totalRelated =
+    traceEventCount +
+    qualityInspectionCount +
+    diseaseDetectionCount +
+    supplyChainRecordCount +
+    inventoryTransactionCount;
+
+  if (totalRelated > 0 || product.onChainBatchId) {
+    throw new BadRequestError(
+      'Không thể xóa vĩnh viễn lô đã có lịch sử truy xuất, tồn kho, kiểm nghiệm, nhận diện bệnh, chuỗi cung ứng hoặc dữ liệu blockchain. Hãy giữ ở thùng rác để bảo toàn hồ sơ.'
+    );
+  }
+
+  await Product.deleteOne({ _id: productId, isDeleted: true });
   return product;
 };

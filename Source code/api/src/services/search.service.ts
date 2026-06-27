@@ -11,7 +11,7 @@ export interface ProductSearchFilters {
   q?: string;
   category?: string;
   type?: 'Plant' | 'Animal';
-  status?: 'draft' | 'active' | 'completed';
+  status?: 'draft' | 'active' | 'completed' | 'recalled';
   origin?: string;
   farming_area?: string;
   created_by?: string;
@@ -44,7 +44,7 @@ export interface PaginatedResult<T> {
 }
 
 const buildProductQuery = (filters: ProductSearchFilters) => {
-  const query: Record<string, unknown> = {};
+  const query: Record<string, unknown> = { isDeleted: { $ne: true } };
 
   if (filters.q) {
     query.$text = { $search: filters.q };
@@ -146,20 +146,24 @@ export const getProductStats = async () => {
   const [statusStats, categoryStats, typeStats, totalCount, monthlyStats] =
     await Promise.all([
       Product.aggregate([
+        { $match: { isDeleted: { $ne: true } } },
         { $group: { _id: '$status', count: { $sum: 1 } } },
         { $sort: { _id: 1 } },
       ]),
       Product.aggregate([
+        { $match: { isDeleted: { $ne: true } } },
         { $group: { _id: '$category', count: { $sum: 1 } } },
         { $sort: { count: -1 } },
         { $limit: 10 },
       ]),
       Product.aggregate([
+        { $match: { isDeleted: { $ne: true } } },
         { $group: { _id: '$type', count: { $sum: 1 } } },
         { $sort: { _id: 1 } },
       ]),
-      Product.countDocuments(),
+      Product.countDocuments({ isDeleted: { $ne: true } }),
       Product.aggregate([
+        { $match: { isDeleted: { $ne: true } } },
         {
           $group: {
             _id: {

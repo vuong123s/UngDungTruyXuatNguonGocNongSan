@@ -1,3 +1,5 @@
+import 'package:app/models/live_camera.dart';
+
 class Product {
   final String id;
   final String name;
@@ -5,13 +7,20 @@ class Product {
   final String category;
   final String origin;
   final String type; // plant | animal
+  final double initialQuantity;
+  final double currentQuantity;
+  final String unit;
   final List<String> images;
+  final List<LiveCamera> liveCameras;
   final String? onChainBatchId;
-  final String status; // draft | active | completed
+  final String status; // draft | active | completed | recalled
   final Map<String, dynamic>? farmingArea;
   final DateTime? cultivationTime;
   final Map<String, dynamic>? createdBy;
   final DateTime? createdAt;
+  final bool isDeleted;
+  final DateTime? deletedAt;
+  final Map<String, dynamic>? deletedBy;
 
   Product({
     required this.id,
@@ -20,13 +29,20 @@ class Product {
     required this.category,
     required this.origin,
     required this.type,
+    this.initialQuantity = 0,
+    this.currentQuantity = 0,
+    this.unit = 'kg',
     required this.images,
+    this.liveCameras = const [],
     this.onChainBatchId,
     required this.status,
     this.farmingArea,
     this.cultivationTime,
     this.createdBy,
     this.createdAt,
+    this.isDeleted = false,
+    this.deletedAt,
+    this.deletedBy,
   });
 
   /// `batchId` dùng trên blockchain đang lấy trực tiếp từ `_id`.
@@ -41,6 +57,7 @@ class Product {
     switch (status) {
       case 'active': return 'Đang sản xuất';
       case 'completed': return 'Hoàn thành';
+      case 'recalled': return 'Đã thu hồi';
       default: return 'Nháp';
     }
   }
@@ -60,7 +77,14 @@ class Product {
     category: json['category'] as String? ?? '',
     origin: json['origin'] as String? ?? '',
     type: json['type'] as String? ?? 'plant',
+    initialQuantity: _numToDouble(json['initial_quantity']),
+    currentQuantity: _numToDouble(json['current_quantity']),
+    unit: json['unit']?.toString() ?? 'kg',
     images: _parseImages(json['images']),
+    liveCameras: (json['live_cameras'] as List<dynamic>? ?? const [])
+        .whereType<Map<String, dynamic>>()
+        .map(LiveCamera.fromJson)
+        .toList(),
     onChainBatchId: json['onChainBatchId'] as String?,
     status: json['status'] as String? ?? 'draft',
     farmingArea: json['farming_area'] as Map<String, dynamic>?,
@@ -71,6 +95,11 @@ class Product {
     createdAt: json['createdAt'] != null
         ? DateTime.tryParse(json['createdAt'] as String)
         : null,
+    isDeleted: json['isDeleted'] == true,
+    deletedAt: json['deletedAt'] != null
+        ? DateTime.tryParse(json['deletedAt'] as String)
+        : null,
+    deletedBy: json['deleted_by'] as Map<String, dynamic>?,
   );
 
   static List<String> _parseImages(dynamic raw) {
@@ -83,5 +112,10 @@ class Product {
         })
         .where((s) => s.isNotEmpty)
         .toList();
+  }
+
+  static double _numToDouble(dynamic raw) {
+    if (raw is num) return raw.toDouble();
+    return double.tryParse(raw?.toString() ?? '') ?? 0;
   }
 }

@@ -27,7 +27,9 @@ export const createFarmingArea = async (req: Request, res: Response) => {
 export const updateFarmingArea = async (req: Request, res: Response) => {
   const farmingArea = await farmingAreaService.updateFarmingArea(
     req.params.id,
-    req.body
+    req.body,
+    req.user!.userId,
+    req.user!.role
   );
   res.status(StatusCodes.OK).json({ farmingArea });
 };

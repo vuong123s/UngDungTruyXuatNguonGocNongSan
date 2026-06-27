@@ -4,7 +4,9 @@ import 'package:app/core/router.dart';
 import 'package:app/core/theme.dart';
 import 'package:app/models/batch.dart';
 import 'package:app/providers/providers.dart';
+import 'package:app/services/batch_service.dart';
 import 'package:app/widgets/blockchain_badge.dart';
+import 'package:app/widgets/live_camera_section.dart';
 import 'package:app/widgets/liquid_glass.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -198,6 +200,7 @@ class _TimelineViewState extends State<_TimelineView> {
   String _searchQuery = '';
   String _selectedTypeFilter = 'ALL';
   String _selectedStatusFilter = 'ALL';
+  final Map<String, BatchEvent> _eventOverrides = {};
 
   @override
   void dispose() {
@@ -207,8 +210,11 @@ class _TimelineViewState extends State<_TimelineView> {
 
   @override
   Widget build(BuildContext context) {
-    final allEvents = [...widget.batch.events]
-      ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
+    final allEvents =
+        widget.batch.events
+            .map((event) => _eventOverrides[event.id] ?? event)
+            .toList()
+          ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
     final confirmedCount = allEvents
         .where((event) => event.onChainStatus == 'confirmed')
         .length;
@@ -313,6 +319,7 @@ class _TimelineViewState extends State<_TimelineView> {
           ),
         ),
         const SizedBox(height: 18),
+        LiveCameraSection(cameras: widget.batch.liveCameras),
         Text('Dòng thời gian', style: Theme.of(context).textTheme.titleLarge),
         const SizedBox(height: 8),
         const Text(
@@ -424,6 +431,19 @@ class _TimelineViewState extends State<_TimelineView> {
             _SelectedTimelineEventDetail(
               key: ValueKey(selectedEvent.id),
               event: selectedEvent,
+              onRetry: () async {
+                final updated = await BatchService().retryBlockchainEvent(
+                  selectedEvent!.id,
+                );
+                if (mounted) {
+                  setState(() => _eventOverrides[updated.id] = updated);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Đã ghi lại sự kiện lên blockchain.'),
+                    ),
+                  );
+                }
+              },
             ),
         ],
       ],
@@ -431,7 +451,7 @@ class _TimelineViewState extends State<_TimelineView> {
   }
 }
 
-class _InteractiveProcessTimeline extends StatelessWidget {
+class _InteractiveProcessTimeline extends StatefulWidget {
   const _InteractiveProcessTimeline({
     required this.events,
     required this.selectedEventId,
@@ -443,58 +463,155 @@ class _InteractiveProcessTimeline extends StatelessWidget {
   final ValueChanged<BatchEvent> onSelect;
 
   @override
+  State<_InteractiveProcessTimeline> createState() =>
+      _InteractiveProcessTimelineState();
+}
+
+class _InteractiveProcessTimelineState
+    extends State<_InteractiveProcessTimeline> {
+  final ScrollController _horizontalController = ScrollController();
+
+  @override
+  void dispose() {
+    _horizontalController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     const itemWidth = 124.0;
-    final minWidth = MediaQuery.sizeOf(context).width - 78;
-    final timelineWidth = math.max(minWidth, events.length * itemWidth);
+    const edgeInset = 20.0;
+    final baseTimelineWidth = widget.events.length * itemWidth + edgeInset * 2;
 
     return GlassPanel(
       padding: const EdgeInsets.fromLTRB(10, 20, 10, 14),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: SizedBox(
-          width: timelineWidth,
-          height: 214,
-          child: Stack(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final timelineWidth = math.max(
+            constraints.maxWidth,
+            baseTimelineWidth,
+          );
+          final hasHorizontalOverflow =
+              timelineWidth - constraints.maxWidth > 0.5;
+
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Positioned(
-                left: itemWidth / 2,
-                right: itemWidth / 2,
-                top: 106,
-                child: Container(
-                  height: 5,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(999),
-                    gradient: LinearGradient(
-                      colors: [
-                        AppColors.pine.withValues(alpha: 0.35),
-                        AppColors.leaf.withValues(alpha: 0.6),
-                        AppColors.pine.withValues(alpha: 0.35),
-                      ],
-                    ),
+              SingleChildScrollView(
+                controller: _horizontalController,
+                scrollDirection: Axis.horizontal,
+                physics: const BouncingScrollPhysics(),
+                child: SizedBox(
+                  width: timelineWidth,
+                  height: 214,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Positioned(
+                        left: edgeInset + itemWidth / 2,
+                        right: edgeInset + itemWidth / 2,
+                        top: 106,
+                        child: Container(
+                          height: 5,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(999),
+                            gradient: LinearGradient(
+                              colors: [
+                                AppColors.pine.withValues(alpha: 0.35),
+                                AppColors.leaf.withValues(alpha: 0.6),
+                                AppColors.pine.withValues(alpha: 0.35),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const SizedBox(width: edgeInset),
+                          ...widget.events.asMap().entries.map((entry) {
+                            final index = entry.key;
+                            final event = entry.value;
+
+                            return SizedBox(
+                              width: itemWidth,
+                              child: _TimelineMilestoneNode(
+                                event: event,
+                                isSelected: widget.selectedEventId == event.id,
+                                showLabelAbove: index.isEven,
+                                onTap: () => widget.onSelect(event),
+                              ),
+                            );
+                          }),
+                          const SizedBox(width: edgeInset),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
               ),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: events.asMap().entries.map((entry) {
-                  final index = entry.key;
-                  final event = entry.value;
+              if (hasHorizontalOverflow) ...[
+                const SizedBox(height: 10),
+                AnimatedBuilder(
+                  animation: _horizontalController,
+                  builder: (context, _) {
+                    final hasClients = _horizontalController.hasClients;
+                    final position = hasClients
+                        ? _horizontalController.position
+                        : null;
+                    final hasScrollMetrics =
+                        position != null &&
+                        position.hasPixels &&
+                        position.hasContentDimensions;
+                    final maxExtent = hasScrollMetrics
+                        ? position.maxScrollExtent
+                        : 0.0;
+                    final currentOffset = hasScrollMetrics
+                        ? position.pixels.clamp(0.0, maxExtent).toDouble()
+                        : 0.0;
 
-                  return SizedBox(
-                    width: itemWidth,
-                    child: _TimelineMilestoneNode(
-                      event: event,
-                      isSelected: selectedEventId == event.id,
-                      showLabelAbove: index.isEven,
-                      onTap: () => onSelect(event),
-                    ),
-                  );
-                }).toList(),
-              ),
+                    return SliderTheme(
+                      data: SliderTheme.of(context).copyWith(
+                        trackHeight: 6,
+                        thumbShape: const RoundSliderThumbShape(
+                          enabledThumbRadius: 8,
+                        ),
+                        overlayShape: const RoundSliderOverlayShape(
+                          overlayRadius: 14,
+                        ),
+                        activeTrackColor: AppColors.pine.withValues(
+                          alpha: 0.72,
+                        ),
+                        inactiveTrackColor: AppColors.pine.withValues(
+                          alpha: 0.2,
+                        ),
+                        thumbColor: AppColors.pine,
+                      ),
+                      child: Slider(
+                        value: currentOffset,
+                        min: 0,
+                        max: maxExtent <= 0 ? 1 : maxExtent,
+                        onChanged: !hasScrollMetrics || maxExtent <= 0
+                            ? null
+                            : (value) {
+                                _horizontalController.jumpTo(value);
+                              },
+                      ),
+                    );
+                  },
+                ),
+                const Text(
+                  'Vuốt ngang hoặc kéo thanh trượt bên dưới để xem toàn bộ các mốc.',
+                  style: TextStyle(
+                    color: AppColors.muted,
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
             ],
-          ),
-        ),
+          );
+        },
       ),
     );
   }
@@ -622,13 +739,28 @@ class _TimelineMilestoneNode extends StatelessWidget {
   }
 }
 
-class _SelectedTimelineEventDetail extends StatelessWidget {
-  const _SelectedTimelineEventDetail({super.key, required this.event});
+class _SelectedTimelineEventDetail extends StatefulWidget {
+  const _SelectedTimelineEventDetail({
+    super.key,
+    required this.event,
+    required this.onRetry,
+  });
 
   final BatchEvent event;
+  final Future<void> Function() onRetry;
+
+  @override
+  State<_SelectedTimelineEventDetail> createState() =>
+      _SelectedTimelineEventDetailState();
+}
+
+class _SelectedTimelineEventDetailState
+    extends State<_SelectedTimelineEventDetail> {
+  bool _retrying = false;
 
   @override
   Widget build(BuildContext context) {
+    final event = widget.event;
     return AnimatedSwitcher(
       duration: const Duration(milliseconds: 240),
       switchInCurve: Curves.easeOut,
@@ -775,6 +907,8 @@ class _SelectedTimelineEventDetail extends StatelessWidget {
                       onTap: () {
                         showDialog<void>(
                           context: context,
+                          barrierDismissible: true,
+                          useSafeArea: true,
                           builder: (_) =>
                               _VideoPlayerDialog(videoUrl: videoUrl),
                         );
@@ -784,15 +918,37 @@ class _SelectedTimelineEventDetail extends StatelessWidget {
                 ),
               ),
             ],
-            const SizedBox(height: 14),
-            _DataLine(
-              label: 'Mã giao dịch',
-              value: event.transactionHash ?? 'Đang chờ xác nhận',
-            ),
-            if (event.dataHash != null && event.dataHash!.isNotEmpty)
-              _DataLine(label: 'Mã băm dữ liệu', value: event.dataHash!),
-            if (event.actor != null && event.actor!.isNotEmpty)
-              _DataLine(label: 'Người thực hiện', value: event.actor!),
+            if (event.onChainStatus == 'failed' ||
+                event.onChainStatus == 'skipped') ...[
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: _retrying
+                      ? null
+                      : () async {
+                          try {
+                            setState(() => _retrying = true);
+                            await widget.onRetry();
+                          } catch (error) {
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Ghi lại thất bại: $error'),
+                                ),
+                              );
+                            }
+                          } finally {
+                            if (mounted) setState(() => _retrying = false);
+                          }
+                        },
+                  icon: const Icon(Icons.sync_rounded),
+                  label: Text(
+                    _retrying ? 'Đang ghi lại...' : 'Ghi lại lên blockchain',
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -1010,6 +1166,24 @@ class _VideoPlayerDialogState extends State<_VideoPlayerDialog> {
     }
   }
 
+  Future<void> _seekRelative(Duration delta) async {
+    final controller = _controller;
+    if (controller == null || !controller.value.isInitialized) return;
+
+    final duration = controller.value.duration;
+    final current = controller.value.position;
+    final target = current + delta;
+
+    final clamped = target < Duration.zero
+        ? Duration.zero
+        : (target > duration ? duration : target);
+
+    await controller.seekTo(clamped);
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
   @override
   void dispose() {
     _controller?.dispose();
@@ -1058,18 +1232,25 @@ class _VideoPlayerDialogState extends State<_VideoPlayerDialog> {
                   child: CircularProgressIndicator(),
                 )
               else
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(14),
-                  child: AspectRatio(
-                    aspectRatio: _controller!.value.aspectRatio == 0
-                        ? 16 / 9
-                        : _controller!.value.aspectRatio,
-                    child: Stack(
-                      alignment: Alignment.bottomCenter,
+                Builder(
+                  builder: (context) {
+                    final controller = _controller!;
+
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        VideoPlayer(_controller!),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(14),
+                          child: AspectRatio(
+                            aspectRatio: controller.value.aspectRatio == 0
+                                ? 16 / 9
+                                : controller.value.aspectRatio,
+                            child: VideoPlayer(controller),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
                         VideoProgressIndicator(
-                          _controller!,
+                          controller,
                           allowScrubbing: true,
                           colors: VideoProgressColors(
                             playedColor: AppColors.pine,
@@ -1081,34 +1262,105 @@ class _VideoPlayerDialogState extends State<_VideoPlayerDialog> {
                             ),
                           ),
                         ),
-                        Positioned(
-                          right: 10,
-                          bottom: 16,
-                          child: FilledButton.tonalIcon(
-                            onPressed: () {
-                              if (_controller!.value.isPlaying) {
-                                _controller!.pause();
-                              } else {
-                                _controller!.play();
-                              }
-                              setState(() {});
-                            },
-                            icon: Icon(
-                              _controller!.value.isPlaying
+                        const SizedBox(height: 12),
+                        Wrap(
+                          alignment: WrapAlignment.center,
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            _VideoActionChip(
+                              icon: Icons.close_rounded,
+                              label: 'Đóng',
+                              onTap: () => Navigator.of(context).pop(),
+                            ),
+                            _VideoActionChip(
+                              icon: Icons.replay_10_rounded,
+                              label: '-10s',
+                              onTap: () =>
+                                  _seekRelative(const Duration(seconds: -10)),
+                              filled: true,
+                            ),
+                            _VideoActionChip(
+                              icon: controller.value.isPlaying
                                   ? Icons.pause_rounded
                                   : Icons.play_arrow_rounded,
-                            ),
-                            label: Text(
-                              _controller!.value.isPlaying
+                              label: controller.value.isPlaying
                                   ? 'Tạm dừng'
                                   : 'Phát',
+                              onTap: () async {
+                                if (controller.value.isPlaying) {
+                                  await controller.pause();
+                                } else {
+                                  await controller.play();
+                                }
+                                if (mounted) {
+                                  setState(() {});
+                                }
+                              },
+                              filled: true,
                             ),
-                          ),
+                            _VideoActionChip(
+                              icon: Icons.forward_10_rounded,
+                              label: '+10s',
+                              onTap: () =>
+                                  _seekRelative(const Duration(seconds: 10)),
+                              filled: true,
+                            ),
+                          ],
                         ),
                       ],
-                    ),
-                  ),
+                    );
+                  },
                 ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _VideoActionChip extends StatelessWidget {
+  const _VideoActionChip({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.filled = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final bool filled;
+
+  @override
+  Widget build(BuildContext context) {
+    final foreground = filled ? Colors.white : AppColors.ink;
+    final background = filled
+        ? AppColors.forest.withValues(alpha: 0.92)
+        : Colors.white.withValues(alpha: 0.62);
+
+    return Material(
+      color: background,
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 18, color: foreground),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  color: foreground,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 13,
+                ),
+              ),
             ],
           ),
         ),

@@ -11,9 +11,14 @@ import notificationRoutes from './notification.routes';
 import adminRoutes from './admin.routes';
 import searchRoutes from './search.routes';
 import auditLogRoutes from './auditLog.routes';
+import publicRoutes from './public.routes';
+import qualityInspectionRoutes from './qualityInspection.routes';
+import diseaseDetectionRoutes from './diseaseDetection.routes';
+import supplyChainRoutes from './supplyChain.routes';
 
 const router = Router();
 
+router.use('/public', publicRoutes);
 router.use('/auth', authRoutes);
 router.use('/users', userRoutes);
 router.use('/products', productRoutes);
@@ -26,5 +31,8 @@ router.use('/notifications', notificationRoutes);
 router.use('/admin', adminRoutes);
 router.use('/search', searchRoutes);
 router.use('/audit-logs', auditLogRoutes);
+router.use('/quality-inspections', qualityInspectionRoutes);
+router.use('/disease-detections', diseaseDetectionRoutes);
+router.use('/supply-chain', supplyChainRoutes);
 
 export default router;

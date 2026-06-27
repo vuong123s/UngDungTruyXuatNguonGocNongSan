@@ -1,336 +1,330 @@
-# TỔNG HỢP CHI TIẾT PROJECT
+# TONG HOP CHI TIET PROJECT
 
-Ngày cập nhật: 2026-04-16
+Ngay cap nhat: 2026-04-17
 
-## 1) Tổng quan nhanh
+## 1) Tong quan he thong
 
-Đây là hệ sinh thái truy xuất nguồn gốc nông sản đa nền tảng gồm 4 khối chính:
+Day la he thong truy xuat nguon goc nong san da nen tang, gom 4 khoi chinh:
 
 - Backend API: Node.js + TypeScript + Express + MongoDB + Ethers.
-- Smart contract: Hardhat + Solidity (hợp đồng Traceability).
-- Web quản trị/vận hành: React + TypeScript.
-- Mobile client: Flutter + Riverpod + Dio.
+- Blockchain: Hardhat + Solidity (Traceability smart contract).
+- Web app: React + TypeScript (quan tri/van hanh).
+- Mobile app: Flutter (farmer/manager/consumer).
 
-Hệ thống dùng mô hình lưu trữ lai:
+Mo hinh du lieu lai:
 
-- Off-chain (MongoDB): lưu dữ liệu chi tiết nghiệp vụ, truy vấn nhanh.
-- On-chain (EVM): lưu bằng chứng hash và lịch sử hành động không thể chỉnh sửa.
+- Off-chain (MongoDB): luu du lieu nghiep vu chi tiet, truy van nhanh.
+- On-chain (EVM): luu hash va lich su hanh dong de dam bao tinh toan ven.
 
-## 2) Mục tiêu nghiệp vụ
+## 2) Muc tieu nghiep vu
 
-- Quản lý vòng đời lô nông sản (batch/product).
-- Ghi nhận các sự kiện canh tác/vận hành theo timeline.
-- Tạo QR cho từng lô để truy xuất từ web/mobile.
-- Xác thực tính toàn vẹn dữ liệu bằng blockchain.
-- Xuất báo cáo PDF/Excel/QR phục vụ quản lý và kiểm toán.
+- Quan ly vong doi lo nong san (batch/product).
+- Ghi nhan su kien theo timeline canh tac/che bien/van chuyen.
+- Tao QR de truy xuat nhanh tren web/mobile.
+- Xac minh du lieu su kien qua blockchain.
+- Xuat bao cao PDF/Excel va bo QR.
 
-## 3) Kiến trúc tổng thể
+## 3) Kien truc tong the
 
 ```text
 [Web React] ----\
-                 \         +---------------------+
-[Mobile Flutter] ---> API  |  Express + MongoDB  |
-                 /         |  (off-chain data)   |
-[Other Clients]-/          +----------+----------+
-                                      |
-                                      | ethers
-                                      v
-                           +----------------------+
-                           | Traceability.sol     |
-                           | (on-chain evidence)  |
-                           +----------------------+
+                 \         +---------------------------+
+[Mobile Flutter] ---> API  | Express + MongoDB        |
+                 /         | (du lieu off-chain)       |
+[Other Clients]-/          +------------+--------------+
+                                        |
+                                        | ethers
+                                        v
+                             +--------------------------+
+                             | Traceability.sol         |
+                             | (bang chung on-chain)    |
+                             +--------------------------+
 ```
 
-Luồng dữ liệu chính:
+Luong xu ly tong quat:
 
-1. Client gửi yêu cầu tạo sản phẩm/sự kiện tới API.
-2. API lưu bản ghi nghiệp vụ vào MongoDB.
-3. API hash dữ liệu lõi và ghi hash + metadata lên contract.
-4. API trả trạng thái on-chain/off-chain cho client.
-5. Client có thể verify lại sự kiện bằng endpoint xác thực.
+1. Client gui request tao product/trace event den API.
+2. API luu du lieu nghiep vu vao MongoDB.
+3. API hash core data va ghi hash len smart contract.
+4. API tra ve metadata on-chain/off-chain cho client.
+5. Client co the verify lai su kien theo eventId.
 
-## 4) Vai trò từng thư mục/module
+## 4) Cau truc thu muc va vai tro
 
-### 4.1 Backend API (`api/`)
+### 4.1 Thu muc goc
 
-- Entry point: `api/src/index.ts`.
-- Route tổng: `api/src/routes/index.ts`, base path `/api/v1`.
-- Kết nối DB: `api/src/config/db.ts`.
-- Cấu hình môi trường: `api/src/config/env.ts`.
-- Tích hợp blockchain (provider/signer/contract): `api/src/config/blockchain.ts`.
-- Upload ảnh: `api/src/config/upload.ts` (Multer, tối đa 5MB/file).
+- create_traceability_doc.py, make_docx.py: script tao tai lieu Word.
+- TONG_HOP_CHI_TIET_PROJECT.md: tai lieu tong hop (file nay).
+- Dockerfile (goc): hien tai khong dung lam runtime chinh.
 
-Các nhóm nghiệp vụ chính:
+### 4.2 Backend API (api/)
 
-- Auth & phân quyền.
-- Quản lý người dùng.
-- Quản lý sản phẩm/lô nông sản.
-- Nhật ký truy xuất (trace events).
-- Vùng trồng/chứng nhận.
-- Thông báo, audit log, tìm kiếm.
-- Xuất PDF/Excel/QR.
+- Entry point: api/src/index.ts.
+- Router tong hop: api/src/routes/index.ts (base /api/v1).
+- Cau hinh env/db/upload/blockchain: api/src/config/.
+- Service nghiep vu: api/src/services/.
+- Controller + middleware + model: api/src/controllers/, api/src/middlewares/, api/src/models/.
 
-### 4.2 Smart Contract (`blockchain/`)
+Nhom nghiep vu chinh:
 
-- Contract chính API đang dùng: `blockchain/contracts/Traceability.sol`.
-- Contract phụ/legacy thử nghiệm: `blockchain/contracts/AgriTraceability.sol`.
-- Deploy script: `blockchain/scripts/deploy.ts`.
-- Test: `blockchain/test/Traceability.test.ts`.
-- Hardhat config mạng local/sepolia/amoy: `blockchain/hardhat.config.ts`.
+- Auth, users, product, trace event.
+- Farming area, certification.
+- Export, upload.
+- Notification, admin, search, audit log.
 
-### 4.3 Web App (`web/`)
+### 4.3 Smart Contract (blockchain/)
 
-- Entry: `web/src/App.tsx`.
-- API client: `web/src/core/api/axiosClient.ts`.
-- Domain API wrappers: `web/src/core/api/*.api.ts`.
-- Auth context: `web/src/core/context/AuthContext.tsx`.
+- Contract chinh dang dung: blockchain/contracts/Traceability.sol.
+- Contract thu nghiem/legacy: blockchain/contracts/AgriTraceability.sol.
+- Deploy script: blockchain/scripts/deploy.ts.
+- Unit test contract: blockchain/test/Traceability.test.ts.
+- Cau hinh Hardhat: blockchain/hardhat.config.ts.
 
-Web có dashboard, ghi nhật ký nhanh, vùng trồng, chứng nhận, xuất báo cáo, admin.
+### 4.4 Web (web/)
 
-### 4.4 Mobile App (`app/`)
+- Entry: web/src/index.tsx, web/src/App.tsx.
+- API client va wrappers: web/src/core/api/.
+- Auth context va pages/components trong web/src/.
+- Build deployment qua nginx (web/Dockerfile + web/nginx.conf).
 
-- Entry: `app/lib/main.dart`.
-- Router: `app/lib/core/router.dart`.
-- API client: `app/lib/core/api_client.dart`.
-- Service chính: `app/lib/services/auth_service.dart`, `batch_service.dart`, `trace_service.dart`.
+### 4.5 Mobile (app/)
 
-Mobile hỗ trợ quét/nhập batch ID, xem timeline, đăng nhập, ghi sự kiện, thông báo.
+- Entry: app/lib/main.dart.
+- Cau truc: app/lib/core, app/lib/screens, app/lib/services, app/lib/providers.
+- Ho tro quet QR, xem trace timeline, thao tac nghiep vu theo role.
 
-### 4.5 Script tài liệu (`create_traceability_doc.py`, `make_docx.py`)
-
-- Dùng để sinh báo cáo DOCX phục vụ học phần/đồ án.
-
-## 5) Công nghệ và thư viện chính
+## 5) Cong nghe chinh
 
 ### API
 
-- Express, TypeScript, Mongoose.
-- Xác thực: JWT + bcrypt.
-- Blockchain SDK: ethers.
-- Upload: multer.
-- Export tài liệu: pdfkit, exceljs, qrcode.
+- express, typescript, mongoose.
+- xac thuc: jwt + bcrypt.
+- upload: multer.
+- export: pdfkit, exceljs, qrcode.
+- blockchain sdk: ethers.
 
 ### Blockchain
 
-- Hardhat, Solidity 0.8.24, hardhat-toolbox.
+- hardhat, solidity ^0.8.24, hardhat-toolbox.
 
 ### Web
 
-- React 18, TypeScript, react-router-dom, axios.
+- react 18, typescript, react-router-dom, axios.
 
 ### Mobile
 
-- Flutter 3.11 SDK, Riverpod, Dio.
-- QR: mobile_scanner, qr_flutter.
+- flutter, dio, riverpod.
+- qr/mobile scan: mobile_scanner, qr_flutter.
 
-## 6) Cơ chế on-chain/off-chain
+## 6) Luong on-chain/off-chain chi tiet
 
-### 6.1 Tạo sản phẩm/lô
+### 6.1 Tao product
 
-Trong `api/src/services/product.service.ts`:
+Trong api/src/services/product.service.ts:
 
-- Tạo Product trong MongoDB.
-- Dùng `product._id` làm `batchId`.
-- Nếu blockchain được cấu hình:
-  - gọi `createBatchOnChain(batchId)`;
-  - cập nhật `onChainBatchId`, `status = active`.
-- Sinh QR chứa URL truy xuất: `{FRONTEND_URL}/trace/{batchId}`.
+- Tao Product trong MongoDB.
+- Lay product._id lam batchId.
+- Neu da cau hinh blockchain:
+  - Goi createBatchOnChain(batchId).
+  - Cap nhat onChainBatchId va status active.
+- Tao QR truy xuat: {FRONTEND_URL}/trace/{batchId}.
 
-### 6.2 Tạo trace event
+### 6.2 Tao trace event
 
-Trong `api/src/services/traceEvent.service.ts`:
+Trong api/src/services/traceEvent.service.ts:
 
-- Lưu TraceEvent trước với trạng thái `pending`.
-- Build `coreData` rồi hash bằng keccak256.
-- Nếu chưa cấu hình blockchain:
-  - gán `onChainStatus = skipped`;
-  - vẫn lưu `dataHash` off-chain.
-- Nếu đã cấu hình:
-  - kiểm tra batch tồn tại chưa (`batchExistsOnChain`);
-  - nếu chưa có thì tạo batch;
-  - gọi `addAction` lên contract;
-  - cập nhật `txHash`, `blockNumber`, `actionIndex`, `onChainStatus = confirmed`.
-- Nếu gọi chain thất bại:
-  - chuyển `onChainStatus = failed`;
-  - vẫn lưu hash off-chain để phục vụ đối soát.
+- Tao TraceEvent voi trang thai ban dau pending.
+- Tao coreData (batchId, eventType, description, details, recordedBy).
+- Hash coreData bang keccak256.
+- Neu chua cau hinh blockchain:
+  - Danh dau onChainStatus = skipped.
+  - Van luu dataHash off-chain.
+- Neu da cau hinh blockchain:
+  - Kiem tra batch ton tai tren chain.
+  - Neu chua co thi tao batch truoc.
+  - Goi addAction len contract.
+  - Luu txHash, blockNumber, actionIndex, onChainStatus = confirmed.
+- Neu ghi chain loi:
+  - onChainStatus = failed.
+  - Van luu hash off-chain de doi soat.
 
-### 6.3 Verify dữ liệu
+### 6.3 Verify su kien
 
-- Endpoint verify lấy event theo `eventId`.
-- Rebuild hash từ dữ liệu lõi.
-- Gọi `verifyAction(batchId, actionIndex, dataHash)` trên chain.
-- Trả về kết quả `verified` cùng hash/tx metadata.
+- Endpoint verify tim event theo eventId.
+- Rebuild hash tu coreData.
+- Goi verifyAction(batchId, actionIndex, dataHash) tren contract.
+- Tra ve ket qua verified va metadata lien quan.
 
-## 7) Smart contract Traceability (đang dùng)
+## 7) Smart contract Traceability
 
-File: `blockchain/contracts/Traceability.sol`.
+File: blockchain/contracts/Traceability.sol
 
-### Kiểu dữ liệu
+Kieu du lieu chinh:
 
-- `ActionType`: SEEDING, FERTILIZING, WATERING, PEST_CONTROL, HARVESTING, PACKAGING, SHIPPING.
-- `Action`: `dataHash`, `actionType`, `timestamp`, `recorder`.
-- `Batch`: `owner`, `exists`, `actions[]`.
+- ActionType: SEEDING, FERTILIZING, WATERING, PEST_CONTROL, HARVESTING, PACKAGING, SHIPPING.
+- Action: dataHash, actionType, timestamp, recorder.
+- Batch: owner, exists, actions[].
 
-### Hàm chính
+Ham chinh:
 
-- `createBatch(batchId)`.
-- `addAction(batchId, dataHash, actionType)` (chỉ owner của batch).
-- `getHistory(batchId)`.
-- `verifyAction(batchId, index, dataHash)`.
-- `getActionCount(batchId)`.
-- `batchExists(batchId)`.
-- `getBatchOwner(batchId)`.
+- createBatch(batchId).
+- addAction(batchId, dataHash, actionType) (chi owner batch).
+- getHistory(batchId).
+- verifyAction(batchId, index, dataHash).
+- getActionCount(batchId).
+- batchExists(batchId).
+- getBatchOwner(batchId).
 
-## 8) API REST hiện tại (base `/api/v1`)
+## 8) API REST (base /api/v1)
 
 ### 8.1 Auth
 
-- `POST /auth/register`
-- `POST /auth/login`
-- `GET /auth/logout`
-- `POST /auth/forgot-password`
-- `POST /auth/reset-password`
-- `POST /auth/change-password` (cần auth)
+- POST /auth/register
+- POST /auth/login
+- GET /auth/logout
+- POST /auth/forgot-password
+- POST /auth/reset-password
+- POST /auth/change-password (auth)
 
 ### 8.2 Users
 
-- `GET /users` (admin)
-- `GET /users/:id` (auth)
-- `PATCH /users/update` (auth)
+- GET /users (admin)
+- GET /users/:id (auth)
+- PATCH /users/update (auth)
 
 ### 8.3 Products
 
-- `GET /products`
-- `GET /products/:id`
-- `POST /products` (admin/manager/farmer)
-- `PATCH /products/:id` (admin/manager)
-- `DELETE /products/:id` (admin)
+- GET /products
+- GET /products/:id
+- POST /products (admin/manager/farmer)
+- PATCH /products/:id (admin/manager)
+- DELETE /products/:id (admin)
 
 ### 8.4 Trace
 
-- `GET /trace/verify/:eventId`
-- `GET /trace/:productId`
-- `GET /trace/events/product/:productId` (auth)
-- `POST /trace/events` (admin/manager/farmer)
+- GET /trace/verify/:eventId
+- GET /trace/:productId
+- GET /trace/events/product/:productId (auth)
+- POST /trace/events (admin/manager/farmer)
 
 ### 8.5 Farming areas
 
-- `GET /farming-areas`
-- `GET /farming-areas/my/areas` (auth)
-- `GET /farming-areas/:id`
-- `POST /farming-areas` (admin/manager/farmer)
-- `PATCH /farming-areas/:id` (admin/manager/farmer)
-- `DELETE /farming-areas/:id` (admin)
+- GET /farming-areas
+- GET /farming-areas/my/areas (auth)
+- GET /farming-areas/:id
+- POST /farming-areas (admin/manager/farmer)
+- PATCH /farming-areas/:id (admin/manager/farmer)
+- DELETE /farming-areas/:id (admin)
 
 ### 8.6 Certifications
 
-- `GET /certifications`
-- `GET /certifications/holder/:userId`
-- `GET /certifications/farming-area/:areaId`
-- `GET /certifications/:id`
-- `POST /certifications` (admin/manager)
-- `POST /certifications/check-expired` (admin)
-- `PATCH /certifications/:id` (admin/manager)
-- `DELETE /certifications/:id` (admin)
+- GET /certifications
+- GET /certifications/holder/:userId
+- GET /certifications/farming-area/:areaId
+- GET /certifications/:id
+- POST /certifications (admin/manager)
+- POST /certifications/check-expired (admin)
+- PATCH /certifications/:id (admin/manager)
+- DELETE /certifications/:id (admin)
 
 ### 8.7 Export
 
-Tất cả endpoint export yêu cầu auth:
+Tat ca endpoint export can auth:
 
-- `GET /export/product/:id/pdf`
-- `GET /export/product/:id/timeline`
-- `GET /export/products/excel`
-- `GET /export/product/:id/qr`
-- `POST /export/qr/batch`
+- GET /export/product/:id/pdf
+- GET /export/product/:id/timeline
+- GET /export/products/excel
+- GET /export/product/:id/qr
+- POST /export/qr/batch
 
 ### 8.8 Upload
 
-- `POST /upload/single` (auth)
-- `POST /upload/multiple` (auth)
-- `DELETE /upload/:filename` (auth)
+- POST /upload/single (auth)
+- POST /upload/multiple (auth)
+- DELETE /upload/:filename (auth)
 
 ### 8.9 Notifications
 
-- `GET /notifications` (auth)
-- `GET /notifications/unread-count` (auth)
-- `PATCH /notifications/read-all` (auth)
-- `PATCH /notifications/:id/read` (auth)
-- `DELETE /notifications/:id` (auth)
-- `POST /notifications/check-expiring-certifications` (admin)
+- GET /notifications (auth)
+- GET /notifications/unread-count (auth)
+- PATCH /notifications/read-all (auth)
+- PATCH /notifications/:id/read (auth)
+- DELETE /notifications/:id (auth)
+- POST /notifications/check-expiring-certifications (admin)
 
 ### 8.10 Admin
 
-- `GET /admin/dashboard` (admin)
-- `GET /admin/users` (admin)
-- `PATCH /admin/users/:id/role` (admin)
-- `PATCH /admin/users/:id/status` (admin)
-- `DELETE /admin/users/:id` (admin)
-- `GET /admin/health` (admin)
+- GET /admin/dashboard (admin)
+- GET /admin/users (admin)
+- PATCH /admin/users/:id/role (admin)
+- PATCH /admin/users/:id/status (admin)
+- DELETE /admin/users/:id (admin)
+- GET /admin/health (admin)
 
 ### 8.11 Search
 
-- `GET /search/products`
-- `GET /search/products/stats`
-- `GET /search/events`
-- `GET /search/events/stats`
+- GET /search/products
+- GET /search/products/stats
+- GET /search/events
+- GET /search/events/stats
 
 ### 8.12 Audit logs
 
-- `GET /audit-logs` (admin)
-- `GET /audit-logs/entity/:entity/:entityId` (admin/manager)
-- `GET /audit-logs/user/:userId` (admin)
+- GET /audit-logs (admin)
+- GET /audit-logs/entity/:entity/:entityId (admin/manager)
+- GET /audit-logs/user/:userId (admin)
 
-## 9) Mô hình dữ liệu chính
+## 9) Mo hinh du lieu chinh
 
 ### Product
 
-- Trường quan trọng: `name`, `category`, `type`, `origin`, `status`, `farming_area`, `qrcode`, `onChainBatchId`, `created_by`.
-- `status`: draft | active | completed.
+- Truong quan trong: name, category, type, origin, status, farming_area, qrcode, onChainBatchId, created_by.
+- status: draft | active | completed.
 
 ### TraceEvent
 
-- Trường quan trọng: `product`, `batchId`, `eventType`, `description`, `details`, `images`, `recorded_by`.
-- Metadata blockchain: `dataHash`, `txHash`, `blockNumber`, `actionIndex`, `onChainStatus`.
-- `onChainStatus`: pending | confirmed | failed | skipped.
+- Truong quan trong: product, batchId, eventType, description, details, images/videos, recorded_by.
+- Metadata blockchain: dataHash, txHash, blockNumber, actionIndex, onChainStatus.
+- onChainStatus: pending | confirmed | failed | skipped.
 
 ### User
 
-- Trường quan trọng: `first_name`, `last_name`, `email`, `role`, `isActive`.
-- `role`: admin | manager | farmer | consumer.
+- Truong quan trong: first_name, last_name, email, role, isActive.
+- role: admin | manager | farmer | consumer.
 
-## 10) Cấu hình môi trường cần có
+## 10) Bien moi truong can thiet
 
-### 10.1 API (`api/.env`)
+### 10.1 API (api/.env)
 
-- `PORT` (mặc định 5000)
-- `DB_URI`
-- `JWT_SECRET`
-- `JWT_LIFETIME`
-- `BLOCKCHAIN_RPC_URL` (mặc định `http://127.0.0.1:8545`)
-- `BLOCKCHAIN_PRIVATE_KEY`
-- `CONTRACT_ADDRESS`
-- `FRONTEND_URL` (mặc định `http://localhost:3000`)
-- `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` (nếu dùng cloud media)
+- PORT (mac dinh 5000)
+- DB_URI
+- JWT_SECRET
+- JWT_LIFETIME
+- BLOCKCHAIN_RPC_URL (mac dinh http://127.0.0.1:8545)
+- BLOCKCHAIN_PRIVATE_KEY
+- CONTRACT_ADDRESS
+- FRONTEND_URL (mac dinh http://localhost:3000)
+- CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET (neu dung cloud media)
 
-### 10.2 Blockchain (`blockchain/.env`)
+### 10.2 Blockchain (blockchain/.env)
 
-- `PRIVATE_KEY`
-- `SEPOLIA_RPC_URL`
-- `AMOY_RPC_URL`
-- `ETHERSCAN_API_KEY`
-- `POLYGONSCAN_API_KEY`
-- `CONTRACT_NAME` (tuỳ chọn, mặc định Traceability khi deploy script)
+- PRIVATE_KEY
+- SEPOLIA_RPC_URL
+- AMOY_RPC_URL
+- ETHERSCAN_API_KEY
+- POLYGONSCAN_API_KEY
+- CONTRACT_NAME (tuy chon)
 
 ### 10.3 Web
 
-- `REACT_APP_API_URL` (dev thường để `/api/v1` hoặc URL API đầy đủ)
+- REACT_APP_API_URL (thuong dung /api/v1 hoac URL API day du)
 
 ### 10.4 Mobile
 
-- Có thể truyền lúc build/chạy bằng:
-  - `--dart-define=API_BASE_URL=http://<host>:5000/api/v1`
+- Dart define khi chay:
+  - --dart-define=API_BASE_URL=http://<host>:5000/api/v1
 
-## 11) Hướng dẫn chạy local (khuyến nghị)
+## 11) Run local de dev
 
 ### 11.1 Blockchain
 
@@ -340,14 +334,14 @@ npm install
 npm run node
 ```
 
-Terminal khác:
+Mo terminal khac:
 
 ```bash
 cd blockchain
 npm run deploy:local
 ```
 
-Lấy `CONTRACT_ADDRESS` và cấu hình cho API.
+Lay CONTRACT_ADDRESS moi va cap nhat cho API.
 
 ### 11.2 API
 
@@ -357,7 +351,7 @@ npm install
 npm run dev
 ```
 
-API mặc định tại: `http://localhost:5000`.
+API mac dinh: http://localhost:5000
 
 ### 11.3 Web
 
@@ -367,7 +361,7 @@ npm install
 npm start
 ```
 
-Web dev mặc định tại: `http://localhost:3000`.
+Web mac dinh: http://localhost:3000
 
 ### 11.4 Mobile
 
@@ -377,47 +371,88 @@ flutter pub get
 flutter run
 ```
 
-Android emulator dùng host API: `10.0.2.2` theo logic trong `api_client.dart`.
+Voi Android emulator, backend host thuong la 10.0.2.2.
 
-## 12) Triển khai Docker hiện có
+## 12) Docker hien co
 
-- `api/Dockerfile`: build TS -> dist, runtime Node 20 slim.
-- `blockchain/Dockerfile`: chạy hardhat node + deploy local qua script `start-node-and-deploy.sh`.
-- `web/Dockerfile`: build React, serve qua nginx.
-- `web/nginx.conf`: proxy `/api/` sang service `api:5000`.
+- api/Dockerfile: multi-stage build TypeScript -> dist, runtime Node 20 slim.
+- blockchain/Dockerfile: chay hardhat node + deploy script local.
+- web/Dockerfile: build React va serve bang nginx.
+- web/nginx.conf: proxy /api sang api service.
 
-Lưu ý:
+Tinh trang hien tai:
 
-- Chưa có file docker-compose trong repo hiện tại.
-- `Dockerfile` ở thư mục gốc đang để trống.
+- Chua co docker-compose.yml de run full stack.
+- Dockerfile o root khong phai entrypoint chinh.
 
-## 13) Test và chất lượng mã
+## 13) Test va chat luong
 
-- Có test smart contract: `blockchain/test/Traceability.test.ts`.
-- Chưa thấy test tự động rõ ràng cho API/Web/Mobile trong trạng thái hiện tại.
+- Da co test smart contract: blockchain/test/Traceability.test.ts.
+- Chua thay bo test tu dong day du cho API/Web/Mobile.
 
-## 14) Điểm cần lưu ý kỹ thuật
+## 14) Rui ro va luu y ky thuat
 
-- Có dấu hiệu tồn tại code legacy JS trong `api/controllers/traceController.js` và `api/models/Batch.js`.
-  - API thực tế đang chạy từ `api/src/index.ts` (TypeScript), nên cần tránh nhầm lẫn khi bảo trì.
-- `package.json` ở thư mục gốc chỉ chứa dependency `mongodb`, không phải orchestrator chính của toàn hệ.
-- Một số chuỗi tiếng Việt trong source bị lỗi encoding ký tự; nên chuẩn hóa UTF-8 khi bảo trì lâu dài.
+- Ton tai code legacy JS trong api/controllers/traceController.js va api/models/Batch.js.
+- Runtime hien tai cua API la TypeScript (api/src/index.ts), can tranh sua nham vao code legacy.
+- package.json thu muc goc khong dai dien cho toan bo monorepo.
+- Mot so chuoi tieng Viet trong source dang loi encoding, nen chuan hoa UTF-8.
 
-## 15) Đề xuất cải tiến ngắn hạn
+## 15) De xuat cai tien ngan han
 
-1. Thêm `docker-compose.yml` để chạy đồng bộ blockchain + api + web + db.
-2. Tạo bộ `.env.example` cho từng module.
-3. Bổ sung test integration cho API trace/product.
-4. Chuẩn hóa module legacy (xoá hoặc migrate rõ ràng).
-5. Bổ sung tài liệu sequence diagram cho các luồng create product/create trace/verify.
+1. Bo sung docker-compose.yml cho blockchain + api + web + db.
+2. Tao .env.example cho tung module.
+3. Them test integration cho product/trace flow.
+4. Don dep hoac tach ro code legacy JS va TS.
+5. Bo sung sequence diagram cho 3 luong: create product, create trace event, verify.
 
----
+## 16) De xuat tach tai lieu (neu can)
 
-Nếu cần, có thể tách tài liệu này thành:
+- ARCHITECTURE.md: kien truc va data flow.
+- API_REFERENCE.md: endpoint va payload mau.
+- RUNBOOK.md: van hanh, monitoring, su co.
+- SECURITY_NOTES.md: quy tac bao mat, key management, permissions.
 
-- `ARCHITECTURE.md` (kiến trúc)
-- `API_REFERENCE.md` (endpoint)
-- `RUNBOOK.md` (vận hành)
-- `SECURITY_NOTES.md` (bảo mật)
+## 17) Cap nhat nen tang truy xuat
 
-để đội dự án dễ bảo trì hơn.
+- Hash su kien moi dung canonical JSON de bao phu ca du lieu long nhau trong `details`.
+- Truong `dataHashVersion` phan biet hash `v1` cu va `v2` moi, giup du lieu da ghi blockchain van xac minh duoc.
+- Farmer chi duoc tao va retry su kien cho lo nong san do minh quan ly.
+- Endpoint moi: `POST /api/v1/trace/events/:eventId/retry` cho su kien `failed` hoac `skipped`.
+- Retry co khoa trang thai atomic de han che hai yeu cau ghi trung mot su kien.
+- Web hien thi nut ghi lai blockchain cho tai khoan co quyen.
+- Thao tac tao/sua/xoa product, tao trace event va retry duoc ghi vao audit log.
+
+## 18) Kiem nghiem chat luong
+
+- Bo sung mo hinh `QualityInspection` gan truc tiep voi tung lo nong san.
+- Quan ly so phieu, loai kiem nghiem, phong thi nghiem, ngay lay mau, ket luan va tai lieu goc.
+- Ho tro cac chi tieu chi tiet gom gia tri do, don vi, nguong cho phep va ket qua dat/khong dat.
+- API cong khai: `GET /api/v1/quality-inspections/product/:productId`.
+- API quan tri cho admin/manager: tao va cap nhat phieu; chi admin duoc xoa.
+- Thao tac thay doi phieu kiem nghiem duoc ghi audit log.
+- Trang web `/quality-inspections` cung cap dashboard, bo loc va form tao phieu.
+- Ket qua kiem nghiem duoc hien thi tren trang truy xuat cong khai khi quet QR.
+
+## 19) Chuc nang uu tien tren Flutter app
+
+- Dashboard chi tai cac lo cua farmer dang dang nhap; admin/manager van xem duoc toan bo.
+- Farmer duoc chinh sua thong tin va trang thai lo do minh so huu.
+- Them trung tam ho so gom ba tab: kiem nghiem, vung trong va chung nhan.
+- Farmer co the tao/cap nhat vung trong cua minh; API chan sua vung cua nguoi khac.
+- Admin/manager co the tao phieu kiem nghiem va chung nhan ngay tren app.
+- Ket qua kiem nghiem tren app duoc loc theo cac lo thuoc farmer.
+- Su kien blockchain `failed` hoac `skipped` co nut retry trong man hinh timeline.
+- Them cac shortcut quan ly ho so va nut sua lo tren farmer dashboard.
+
+## 20) Quan ly chuoi cung ung
+
+- Quan ly 7 nhom to chuc: nha cung cap, hop tac xa, che bien, kho, van chuyen, phan phoi va ban le.
+- Ho so van hanh ho tro: ban giao, tach lo, gop lo, che bien, nhap kho, xuat kho, van chuyen va thu hoi.
+- Tach lo quy uoc lo chinh la lo nguon, `related_products` la cac lo dau ra.
+- Gop lo quy uoc lo chinh la lo dau ra, `related_products` la cac lo dau vao.
+- Van chuyen ho tro phuong tien, tai xe, dia diem, nhiet do va do am.
+- Thu hoi bat buoc co ly do va co trang thai de theo doi tien do.
+- Farmer chi duoc tao/sua ho so tren cac lo thuoc quyen quan ly, ke ca lo lien quan khi tach/gop.
+- Tat ca thay doi to chuc va ho so van hanh duoc ghi audit log.
+- Web co trang `/supply-chain` de quan ly to chuc va toan bo nghiep vu.
+- Hanh trinh chuoi cung ung duoc hien thi cong khai trong trang truy xuat QR.

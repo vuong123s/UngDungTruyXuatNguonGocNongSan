@@ -29,3 +29,9 @@ export class UnauthorizedError extends AppError {
     super(message, 403);
   }
 }
+
+export class ServiceUnavailableError extends AppError {
+  constructor(message: string) {
+    super(message, 503);
+  }
+}

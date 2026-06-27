@@ -1,7 +1,23 @@
 import { Schema, model, Document, Types } from 'mongoose';
 
-export type AuditAction = 'CREATE' | 'UPDATE' | 'DELETE' | 'LOGIN' | 'LOGOUT' | 'REGISTER';
-export type AuditEntity = 'Product' | 'TraceEvent' | 'User' | 'FarmingArea';
+export type AuditAction =
+  | 'CREATE'
+  | 'UPDATE'
+  | 'DELETE'
+  | 'RETRY'
+  | 'LOGIN'
+  | 'LOGOUT'
+  | 'REGISTER';
+export type AuditEntity =
+  | 'Product'
+  | 'TraceEvent'
+  | 'User'
+  | 'FarmingArea'
+  | 'QualityInspection'
+  | 'DiseaseDetection'
+  | 'SupplyChainOrganization'
+  | 'SupplyChainRecord'
+  | 'InventoryTransaction';
 
 export interface IAuditLog extends Document {
   action: AuditAction;
@@ -24,12 +40,12 @@ const auditLogSchema = new Schema<IAuditLog>(
     action: {
       type: String,
       required: [true, 'Action is required'],
-      enum: ['CREATE', 'UPDATE', 'DELETE', 'LOGIN', 'LOGOUT', 'REGISTER'],
+      enum: ['CREATE', 'UPDATE', 'DELETE', 'RETRY', 'LOGIN', 'LOGOUT', 'REGISTER'],
     },
     entity: {
       type: String,
       required: [true, 'Entity is required'],
-      enum: ['Product', 'TraceEvent', 'User', 'FarmingArea'],
+      enum: ['Product', 'TraceEvent', 'User', 'FarmingArea', 'QualityInspection', 'DiseaseDetection', 'SupplyChainOrganization', 'SupplyChainRecord', 'InventoryTransaction'],
     },
     entityId: {
       type: String,

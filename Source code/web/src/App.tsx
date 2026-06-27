@@ -16,6 +16,9 @@ import FarmingAreaPage from './pages/FarmingArea/FarmingAreaPage';
 import CertificationPage from './pages/Certification/CertificationPage';
 import AdminPage from './pages/Admin/AdminPage';
 import ExportPage from './pages/Export/ExportPage';
+import QualityInspectionPage from './pages/QualityInspection/QualityInspectionPage';
+import DiseaseDetectionPage from './pages/DiseaseDetection/DiseaseDetectionPage';
+import SupplyChainPage from './pages/SupplyChain/SupplyChainPage';
 import { AuthProvider } from './core/context/AuthContext';
 import { useAuth } from './core/hooks/useAuth';
 import { productApi } from './core/api/product.api';
@@ -93,18 +96,22 @@ const ProtectedRoute: React.FC = () => {
 const AppShell: React.FC = () => {
   const { logout, user } = useAuth();
   const location = useLocation();
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const navItems = useMemo(
     () => [
       { to: '/', label: 'Lô nông sản', icon: '📦' },
       { to: '/add-event', label: 'Ghi nhật ký', icon: '📝' },
       { to: '/farming-areas', label: 'Vùng trồng', icon: '🌾' },
+      { to: '/supply-chain', label: 'Chuỗi cung ứng', icon: '🚚' },
       { to: '/certifications', label: 'Chứng nhận', icon: '📜' },
+      { to: '/disease-detection', label: 'Nhận diện bệnh', icon: '🔎' },
+      ...(user?.role === 'admin' || user?.role === 'manager'
+        ? [{ to: '/quality-inspections', label: 'Kiểm nghiệm', icon: '🧪' }]
+        : []),
       { to: '/export', label: 'Xuất báo cáo', icon: '📊' },
-      { to: '/admin', label: 'Quản trị', icon: '⚙️' },
+      ...(user?.role === 'admin' ? [{ to: '/admin', label: 'Quản trị', icon: '⚙️' }] : []),
     ],
-    []
+    [user?.role]
   );
 
   const isActive = (to: string) => {
@@ -247,6 +254,11 @@ const QuickAddEventPage: React.FC = () => {
   const [productId, setProductId] = useState(searchParams.get('productId') || '');
   const [eventType, setEventType] = useState<EventType>('SEEDING');
   const [description, setDescription] = useState('');
+  const editableProducts = useMemo(
+    () => products.filter((product) => product.status !== 'completed'),
+    [products]
+  );
+  const selectedProduct = products.find((product) => product._id === productId);
 
   useEffect(() => {
     let mounted = true;
@@ -256,9 +268,10 @@ const QuickAddEventPage: React.FC = () => {
       .then((res) => {
         if (!mounted) return;
         const list = res.data.products;
+        const editableList = list.filter((product) => product.status !== 'completed');
         setProducts(list);
-        if (!productId && list.length > 0) {
-          setProductId(list[0]._id);
+        if ((!productId || list.find((product) => product._id === productId)?.status === 'completed') && editableList.length > 0) {
+          setProductId(editableList[0]._id);
         }
       })
       .catch((err) => {
@@ -281,6 +294,10 @@ const QuickAddEventPage: React.FC = () => {
       setError('Vui lòng chọn lô và nhập mô tả sự kiện');
       return;
     }
+    if (selectedProduct?.status === 'completed') {
+      setError('Lô đã hoàn thành, không thể thêm nhật ký mới.');
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -289,7 +306,7 @@ const QuickAddEventPage: React.FC = () => {
         eventType,
         description: description.trim(),
       });
-      setResult(data);
+      setResult(data.traceEvent);
       setDescription('');
     } catch (err: any) {
       setError(err.message || 'Không tạo được sự kiện');
@@ -349,13 +366,13 @@ const QuickAddEventPage: React.FC = () => {
               <select
                 value={productId}
                 onChange={(e) => setProductId(e.target.value)}
-                disabled={loading || products.length === 0}
+                disabled={loading || editableProducts.length === 0}
                 style={{ ...inputStyle, cursor: 'pointer' }}
               >
-                {products.length === 0 ? (
-                  <option value="">Chưa có lô nào</option>
+                {editableProducts.length === 0 ? (
+                  <option value="">Không có lô đang theo dõi</option>
                 ) : (
-                  products.map((product) => (
+                  editableProducts.map((product) => (
                     <option key={product._id} value={product._id}>
                       {product.name} - {product.origin}
                     </option>
@@ -421,6 +438,18 @@ const QuickAddEventPage: React.FC = () => {
               </div>
             )}
 
+            {products.length > 0 && editableProducts.length === 0 && (
+              <div style={{
+                background: '#fffbeb',
+                color: '#92400e',
+                padding: spacing[4],
+                borderRadius: borderRadius.lg,
+                fontSize: typography.sizes.sm,
+              }}>
+                Tất cả lô hiện đã hoàn thành. Muốn bổ sung nhật ký, hãy chuyển trạng thái lô về “Đang theo dõi”.
+              </div>
+            )}
+
             {/* Success Message */}
             {result && (
               <div style={{
@@ -452,7 +481,7 @@ const QuickAddEventPage: React.FC = () => {
             {/* Submit Button */}
             <button
               type="submit"
-              disabled={submitting || loading}
+              disabled={submitting || loading || editableProducts.length === 0}
               style={{
                 width: '100%',
                 padding: `${spacing[4]} ${spacing[6]}`,
@@ -487,7 +516,10 @@ const AppRoutes: React.FC = () => {
           <Route path="/products" element={<DashboardPage />} />
           <Route path="/add-event" element={<QuickAddEventPage />} />
           <Route path="/farming-areas" element={<FarmingAreaPage />} />
+          <Route path="/supply-chain" element={<SupplyChainPage />} />
           <Route path="/certifications" element={<CertificationPage />} />
+          <Route path="/disease-detection" element={<DiseaseDetectionPage />} />
+          <Route path="/quality-inspections" element={<QualityInspectionPage />} />
           <Route path="/export" element={<ExportPage />} />
           <Route path="/admin" element={<AdminPage />} />
         </Route>

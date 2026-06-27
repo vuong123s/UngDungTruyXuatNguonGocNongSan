@@ -1,4 +1,6 @@
-﻿class BatchEvent {
+﻿import 'package:app/models/live_camera.dart';
+
+class BatchEvent {
   final String id;
   final String actionType;
   final String note;
@@ -63,7 +65,11 @@ class Batch {
   final String origin;
   final String description;
   final String status;
+  final double initialQuantity;
+  final double currentQuantity;
+  final String unit;
   final String qrCodeUrl;
+  final List<LiveCamera> liveCameras;
   final List<BatchEvent> events;
 
   const Batch({
@@ -74,7 +80,11 @@ class Batch {
     required this.origin,
     required this.description,
     required this.status,
+    this.initialQuantity = 0,
+    this.currentQuantity = 0,
+    this.unit = 'kg',
     required this.qrCodeUrl,
+    required this.liveCameras,
     required this.events,
   });
 
@@ -87,11 +97,22 @@ class Batch {
       origin: (json['origin'] ?? '').toString(),
       description: (json['description'] ?? '').toString(),
       status: (json['status'] ?? 'active').toString(),
+      initialQuantity: _numToDouble(json['initialQuantity'] ?? json['initial_quantity']),
+      currentQuantity: _numToDouble(json['currentQuantity'] ?? json['current_quantity']),
+      unit: (json['unit'] ?? 'kg').toString(),
       qrCodeUrl: (json['qrCodeUrl'] ?? '').toString(),
+      liveCameras: (json['liveCameras'] as List<dynamic>? ?? const [])
+          .map((item) => LiveCamera.fromJson(item as Map<String, dynamic>))
+          .toList(),
       events: (json['events'] as List<dynamic>? ?? const [])
           .map((item) => BatchEvent.fromJson(item as Map<String, dynamic>))
           .toList(),
     );
+  }
+
+  static double _numToDouble(dynamic raw) {
+    if (raw is num) return raw.toDouble();
+    return double.tryParse(raw?.toString() ?? '') ?? 0;
   }
 }
 

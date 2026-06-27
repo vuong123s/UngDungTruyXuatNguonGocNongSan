@@ -25,7 +25,7 @@ export const searchProducts = async (req: Request, res: Response) => {
     q: q as string,
     category: category as string,
     type: type as 'Plant' | 'Animal',
-    status: status as 'draft' | 'active' | 'completed',
+    status: status as 'draft' | 'active' | 'completed' | 'recalled',
     origin: origin as string,
     farming_area: farming_area as string,
     created_by: created_by as string,

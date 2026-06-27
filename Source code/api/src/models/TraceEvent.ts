@@ -22,6 +22,7 @@ export interface ITraceEvent {
   videos: { path: string; filename: string; mimeType?: string }[];
   recorded_by: Types.ObjectId;
   dataHash?: string;
+  dataHashVersion?: 'v1' | 'v2';
   txHash?: string;
   blockNumber?: number;
   onChainStatus: 'pending' | 'confirmed' | 'failed' | 'skipped';
@@ -69,6 +70,10 @@ const traceEventSchema = new Schema<ITraceEvent>(
       required: true,
     },
     dataHash: { type: String },
+    dataHashVersion: {
+      type: String,
+      enum: ['v1', 'v2'],
+    },
     txHash: { type: String },
     blockNumber: { type: Number },
     onChainStatus: {

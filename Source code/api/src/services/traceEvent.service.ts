@@ -1,6 +1,11 @@
 import TraceEvent, { ActionType } from '../models/TraceEvent';
 import Product from '../models/Product';
-import { NotFoundError } from '../utils/errors';
+import {
+  BadRequestError,
+  NotFoundError,
+  ServiceUnavailableError,
+  UnauthorizedError,
+} from '../utils/errors';
 import {
   recordActionOnChain,
   getHistoryFromChain,
@@ -11,9 +16,76 @@ import {
 } from './blockchain.service';
 import { notifyTraceEventAdded } from './notification.service';
 import env from '../config/env';
+import QualityInspection from '../models/QualityInspection';
+import SupplyChainRecord from '../models/SupplyChainRecord';
 
 const isBlockchainConfigured = () =>
   !!(env.CONTRACT_ADDRESS && env.BLOCKCHAIN_PRIVATE_KEY);
+
+const blockchainErrorMessage = (error: any): string => {
+  const rawMessage = String(
+    error?.shortMessage || error?.reason || error?.message || 'Lỗi blockchain không xác định'
+  );
+  const normalized = rawMessage.toLowerCase();
+
+  if (
+    error?.code === 'ECONNREFUSED' ||
+    normalized.includes('econnrefused') ||
+    normalized.includes('failed to detect network') ||
+    normalized.includes('could not coalesce error')
+  ) {
+    return `Không kết nối được node blockchain tại ${env.BLOCKCHAIN_RPC_URL}. Hãy khởi động Hardhat node trước khi ghi lại.`;
+  }
+
+  if (
+    normalized.includes('could not decode result data') ||
+    normalized.includes('contract runner does not support')
+  ) {
+    return 'Không tìm thấy smart contract tại địa chỉ đã cấu hình. Hãy deploy lại contract và cập nhật CONTRACT_ADDRESS.';
+  }
+
+  if (normalized.includes('insufficient funds')) {
+    return 'Ví ghi blockchain không đủ phí giao dịch.';
+  }
+
+  return rawMessage;
+};
+
+const isBlockchainUnavailable = (error: any) => {
+  const message = String(error?.message || '').toLowerCase();
+  return (
+    error?.code === 'ECONNREFUSED' ||
+    message.includes('econnrefused') ||
+    message.includes('failed to detect network') ||
+    message.includes('could not decode result data')
+  );
+};
+
+const buildCoreData = (event: {
+  batchId: string;
+  eventType: ActionType;
+  description: string;
+  details?: Record<string, unknown>;
+  recorded_by: { toString(): string };
+}): Record<string, unknown> => ({
+  batchId: event.batchId,
+  eventType: event.eventType,
+  description: event.description,
+  details: event.details || {},
+  recordedBy: event.recorded_by.toString(),
+});
+
+const assertCanManageProduct = (
+  productOwnerId: string,
+  userId: string,
+  userRole: string
+) => {
+  if (userRole === 'farmer' && productOwnerId !== userId) {
+    throw new UnauthorizedError(
+      'Bạn chỉ được ghi nhật ký cho lô nông sản do mình quản lý'
+    );
+  }
+};
 
 const normalizeMedia = (
   files?: Array<
@@ -69,7 +141,8 @@ export const createTraceEvent = async (
     images?: { path: string; filename: string }[];
     videos?: { path: string; filename: string; mimeType?: string }[];
   },
-  userId: string
+  userId: string,
+  userRole: string
 ) => {
   const {
     product: productId,
@@ -79,10 +152,18 @@ export const createTraceEvent = async (
     images,
     videos,
   } = data;
-  const product = await Product.findById(productId);
+  const product = await Product.findOne({ _id: productId, isDeleted: { $ne: true } });
 
   if (!product) {
     throw new NotFoundError(`Kh?ng t?m th?y s?n ph?m ${productId}`);
+  }
+
+  assertCanManageProduct(product.created_by.toString(), userId, userRole);
+
+  if (product.status === 'completed') {
+    throw new BadRequestError(
+      'Lô nông sản đã hoàn thành, không thể thêm nhật ký mới. Vui lòng chuyển trạng thái lô về đang theo dõi nếu cần bổ sung hồ sơ.'
+    );
   }
 
   const batchId = product._id.toString();
@@ -90,13 +171,13 @@ export const createTraceEvent = async (
   const normalizedVideos = normalizeMedia(videos);
 
   // Hash only core fields. Images stay off-chain.
-  const coreData: Record<string, unknown> = {
+  const coreData = buildCoreData({
     batchId,
     eventType,
     description,
     details: details || {},
-    recordedBy: userId,
-  };
+    recorded_by: { toString: () => userId },
+  });
 
   const traceEvent = await TraceEvent.create({
     product: productId,
@@ -108,6 +189,7 @@ export const createTraceEvent = async (
     videos: normalizedVideos,
     recorded_by: userId,
     onChainStatus: 'pending',
+    dataHashVersion: 'v2',
   });
 
   // Notify product owner about the new trace event (if different from current user)
@@ -170,7 +252,7 @@ export const createTraceEvent = async (
 };
 
 export const getEventsByProduct = async (productId: string) => {
-  const product = await Product.findById(productId);
+  const product = await Product.findOne({ _id: productId, isDeleted: { $ne: true } });
   if (!product) {
     throw new NotFoundError(`Kh?ng t?m th?y s?n ph?m ${productId}`);
   }
@@ -181,7 +263,7 @@ export const getEventsByProduct = async (productId: string) => {
 };
 
 export const getFullTrace = async (productId: string) => {
-  const product = await Product.findById(productId)
+  const product = await Product.findOne({ _id: productId, isDeleted: { $ne: true } })
     .populate('created_by', 'first_name last_name')
     .populate({
       path: 'farming_area',
@@ -202,9 +284,22 @@ export const getFullTrace = async (productId: string) => {
     throw new NotFoundError(`Không tìm thấy sản phẩm ${productId}`);
   }
 
-  const events = await TraceEvent.find({ product: productId })
-    .populate('recorded_by', 'first_name last_name')
-    .sort({ createdAt: 1 });
+  const [events, qualityInspections, supplyChainRecords] = await Promise.all([
+    TraceEvent.find({ product: productId })
+      .populate('recorded_by', 'first_name last_name')
+      .sort({ createdAt: 1 }),
+    QualityInspection.find({ product: productId })
+      .populate('created_by', 'first_name last_name')
+      .sort({ sample_date: -1 }),
+    SupplyChainRecord.find({
+      $or: [{ product: productId }, { related_products: productId }],
+    })
+      .populate('product', 'name category origin')
+      .populate('related_products', 'name category origin')
+      .populate('from_organization', 'name type address')
+      .populate('to_organization', 'name type address')
+      .sort({ occurred_at: 1 }),
+  ]);
 
   let onChain = null;
   try {
@@ -213,7 +308,7 @@ export const getFullTrace = async (productId: string) => {
     console.error('Blockchain getHistory failed:', error.message);
   }
 
-  return { product, events, onChain };
+  return { product, events, qualityInspections, supplyChainRecords, onChain };
 };
 
 export const verifyTraceEvent = async (eventId: string) => {
@@ -230,24 +325,20 @@ export const verifyTraceEvent = async (eventId: string) => {
     };
   }
 
-  const coreData: Record<string, unknown> = {
-    batchId: event.batchId,
-    eventType: event.eventType,
-    description: event.description,
-    details: event.details || {},
-    recordedBy: event.recorded_by.toString(),
-  };
+  const coreData = buildCoreData(event);
 
   try {
-    const { verified, dataHash } = await verifyActionOnChain(
+    const { verified, dataHash, dataHashVersion } = await verifyActionOnChain(
       event.batchId,
       event.actionIndex,
-      coreData
+      coreData,
+      event.dataHashVersion || 'v1'
     );
 
     return {
       verified,
       dataHash,
+      dataHashVersion,
       txHash: event.txHash,
       blockNumber: event.blockNumber,
       event,
@@ -258,5 +349,77 @@ export const verifyTraceEvent = async (eventId: string) => {
       reason: `L?i khi ki?m tra blockchain: ${error.message}`,
       event,
     };
+  }
+};
+
+export const retryTraceEvent = async (
+  eventId: string,
+  userId: string,
+  userRole: string
+) => {
+  if (!isBlockchainConfigured()) {
+    throw new BadRequestError('Blockchain chưa được cấu hình');
+  }
+
+  const event = await TraceEvent.findById(eventId);
+  if (!event) {
+    throw new NotFoundError(`Không tìm thấy sự kiện ${eventId}`);
+  }
+
+  const product = await Product.findOne({ _id: event.product, isDeleted: { $ne: true } });
+  if (!product) {
+    throw new NotFoundError(`Không tìm thấy lô của sự kiện ${eventId}`);
+  }
+
+  assertCanManageProduct(product.created_by.toString(), userId, userRole);
+
+  if (!['failed', 'skipped'].includes(event.onChainStatus)) {
+    throw new BadRequestError(
+      'Chỉ có thể ghi lại sự kiện đang ở trạng thái failed hoặc skipped'
+    );
+  }
+
+  const lockedEvent = await TraceEvent.findOneAndUpdate(
+    { _id: eventId, onChainStatus: { $in: ['failed', 'skipped'] } },
+    { onChainStatus: 'pending' },
+    { new: true }
+  );
+
+  if (!lockedEvent) {
+    throw new BadRequestError('Sự kiện đang được xử lý bởi một yêu cầu khác');
+  }
+
+  const coreData = buildCoreData(lockedEvent);
+
+  try {
+    const existsOnChain = await batchExistsOnChain(lockedEvent.batchId);
+    if (!existsOnChain) {
+      await createBatchOnChain(lockedEvent.batchId);
+    }
+
+    const chainResult = await recordActionOnChain(
+      lockedEvent.batchId,
+      coreData,
+      lockedEvent.eventType
+    );
+
+    lockedEvent.dataHash = chainResult.dataHash;
+    lockedEvent.dataHashVersion = 'v2';
+    lockedEvent.txHash = chainResult.txHash;
+    lockedEvent.blockNumber = chainResult.blockNumber;
+    lockedEvent.actionIndex = chainResult.actionIndex;
+    lockedEvent.onChainStatus = 'confirmed';
+    await lockedEvent.save();
+
+    return lockedEvent;
+  } catch (error: any) {
+    lockedEvent.onChainStatus = 'failed';
+    lockedEvent.dataHash = hashEventData(coreData);
+    await lockedEvent.save();
+    const message = blockchainErrorMessage(error);
+    if (isBlockchainUnavailable(error)) {
+      throw new ServiceUnavailableError(message);
+    }
+    throw new BadRequestError(`Ghi lại blockchain thất bại: ${message}`);
   }
 };

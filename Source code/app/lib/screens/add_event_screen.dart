@@ -22,6 +22,13 @@ class _DetailFieldSpec {
   final TextInputType keyboardType;
 }
 
+class _ActionSampleDraft {
+  const _ActionSampleDraft({required this.note, required this.details});
+
+  final String note;
+  final Map<String, String> details;
+}
+
 const Map<String, List<_DetailFieldSpec>> _detailTemplateByAction = {
   'SEEDING': [
     _DetailFieldSpec(
@@ -131,6 +138,135 @@ const Map<String, List<_DetailFieldSpec>> _detailTemplateByAction = {
   ],
 };
 
+const Map<String, List<_ActionSampleDraft>> _sampleDraftByAction = {
+  'SEEDING': [
+    _ActionSampleDraft(
+      note:
+          'Gieo giống ST25 đợt 1 trên diện tích 1.2ha, đất đủ ẩm và đã xử lý cỏ nền trước 24 giờ.',
+      details: {
+        'seedType': 'Lua ST25',
+        'seedAmount': '120',
+        'seedUnit': 'kg/ha',
+      },
+    ),
+    _ActionSampleDraft(
+      note:
+          'Gieo dặm bổ sung tại các điểm thưa để đồng đều mật độ, hoàn tất trước 09:30 sáng.',
+      details: {
+        'seedType': 'Lua ST25 (gieo dam)',
+        'seedAmount': '18',
+        'seedUnit': 'kg/ha',
+      },
+    ),
+  ],
+  'FERTILIZING': [
+    _ActionSampleDraft(
+      note:
+          'Bon phan lot NPK 16-16-8, ket hop voi xu ly goc de tang kha nang hap thu dau vu.',
+      details: {
+        'fertilizerType': 'NPK 16-16-8',
+        'dosage': '35',
+        'dosageUnit': 'kg/ha',
+        'method': 'Bon goc dong deu',
+      },
+    ),
+    _ActionSampleDraft(
+      note:
+          'Bon bo sung huu co vi sinh sau mua nhe, giup phuc hoi bo re va giu am dat.',
+      details: {
+        'fertilizerType': 'Huu co vi sinh',
+        'dosage': '420',
+        'dosageUnit': 'kg/ha',
+        'method': 'Rai quanh goc + tuoi bo tro',
+      },
+    ),
+  ],
+  'WATERING': [
+    _ActionSampleDraft(
+      note:
+          'Tuoi buoi sang luc 05:40, du tri muc am dat on dinh trong giai doan sinh truong manh.',
+      details: {
+        'waterVolume': '1400',
+        'waterUnit': 'lit/ha',
+        'wateringMethod': 'Tuoi nho giot',
+      },
+    ),
+    _ActionSampleDraft(
+      note:
+          'Dieu chinh lich tuoi sau dot nang nong, chia lam 2 luot de tranh soc nhiet cho cay.',
+      details: {
+        'waterVolume': '1650',
+        'waterUnit': 'lit/ha',
+        'wateringMethod': 'Phun mua ap luc thap',
+      },
+    ),
+  ],
+  'PEST_CONTROL': [
+    _ActionSampleDraft(
+      note:
+          'Phat hien ray nau mat do thap, xu ly bang che pham sinh hoc vao buoi chieu mat troi.',
+      details: {
+        'pestName': 'Ray nau',
+        'treatment': 'Phun che pham neem + theo doi 48h',
+        'dosage': '0.45 lit/ha',
+      },
+    ),
+    _ActionSampleDraft(
+      note:
+          'Kiem soat nam dao o giai doan de nhanh, uu tien bien phap tong hop han che ton du.',
+      details: {
+        'pestName': 'Nam dao on',
+        'treatment': 'Phun sinh hoc ket hop tia tan la benh',
+        'dosage': '0.6 lit/ha',
+      },
+    ),
+  ],
+  'HARVESTING': [
+    _ActionSampleDraft(
+      note:
+          'Thu hoach dot 1 khi do chin dat yeu cau, tach lo A/B de de truy vet va bao quan.',
+      details: {'yield': '2.8', 'yieldUnit': 'tan', 'qualityGrade': 'Loai A'},
+    ),
+    _ActionSampleDraft(
+      note:
+          'Thu hoach hoan tat, kiem tra nhanh do am truoc khi dua vao cong doan dong goi.',
+      details: {'yield': '3.1', 'yieldUnit': 'tan', 'qualityGrade': 'Loai A+'},
+    ),
+  ],
+  'PACKAGING': [
+    _ActionSampleDraft(
+      note:
+          'Dong goi theo quy cach 5kg/bao, dan ma lot va tem truy xuat cho tung kien hang.',
+      details: {'packageType': 'Bao hut am 5kg', 'packageCount': '560'},
+    ),
+    _ActionSampleDraft(
+      note:
+          'Dong goi bo sung cho kenh sieu thi, bo tri khay lot va ma QR ben ngoai thung.',
+      details: {'packageType': 'Thung carton 10kg', 'packageCount': '220'},
+    ),
+  ],
+  'SHIPPING': [
+    _ActionSampleDraft(
+      note:
+          'Ban giao lo hang cho kho trung chuyen, xe lanh duy tri nhiet do on dinh trong suot hanh trinh.',
+      details: {
+        'vehicle': 'Xe tai lanh 2 tan',
+        'destination': 'Kho Thu Duc - TP.HCM',
+        'distanceKm': '42',
+      },
+    ),
+    _ActionSampleDraft(
+      note:
+          'Van chuyen den diem phan phoi mien Dong, da niem phong kien va doi chieu so luong truoc khi xuat ben.',
+      details: {
+        'vehicle': 'Xe tai kin 3.5 tan',
+        'destination': 'Trung tam phan phoi Bien Hoa',
+        'distanceKm': '68',
+      },
+    ),
+  ],
+};
+
 class AddEventScreen extends ConsumerStatefulWidget {
   const AddEventScreen({super.key, this.initialBatchId});
 
@@ -155,6 +291,7 @@ class _AddEventScreenState extends ConsumerState<AddEventScreen> {
   final _noteController = TextEditingController();
   final _picker = ImagePicker();
   final Map<String, TextEditingController> _detailControllers = {};
+  final Map<String, int> _sampleCursorByAction = {};
 
   String? _selectedBatchId;
   String _selectedActionType = _actionTypes.first;
@@ -244,6 +381,33 @@ class _AddEventScreenState extends ConsumerState<AddEventScreen> {
       }
     });
     return payload;
+  }
+
+  void _fillWithSampleDraft() {
+    final samples = _sampleDraftByAction[_selectedActionType] ?? const [];
+    if (samples.isEmpty) return;
+
+    final cursor = _sampleCursorByAction[_selectedActionType] ?? 0;
+    final sampleIndex = cursor % samples.length;
+    final sample = samples[sampleIndex];
+
+    _sampleCursorByAction[_selectedActionType] = cursor + 1;
+
+    _noteController.text = sample.note;
+    for (final entry in _detailControllers.entries) {
+      entry.value.text = sample.details[entry.key] ?? '';
+    }
+
+    setState(() {});
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Đã điền mẫu ${sampleIndex + 1}/${samples.length} cho ${_labelForAction(_selectedActionType)}.',
+        ),
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
   Future<void> _submit() async {
@@ -375,14 +539,30 @@ class _AddEventScreenState extends ConsumerState<AddEventScreen> {
                 ),
               ),
               data: (batches) {
-                if (_selectedBatchId == null && batches.isNotEmpty) {
+                final editableBatches = batches
+                    .where((batch) => batch.status != 'completed')
+                    .toList();
+                final selectedBatch = _findBatchById(batches, _selectedBatchId);
+                final canSubmit =
+                    editableBatches.isNotEmpty &&
+                    selectedBatch != null &&
+                    selectedBatch.status != 'completed';
+
+                if ((_selectedBatchId == null ||
+                        selectedBatch?.status == 'completed') &&
+                    editableBatches.isNotEmpty) {
                   WidgetsBinding.instance.addPostFrameCallback((_) {
-                    if (!mounted || _selectedBatchId != null) return;
-                    setState(() => _selectedBatchId = batches.first.batchId);
+                    if (!mounted) return;
+                    final current = _findBatchById(batches, _selectedBatchId);
+                    if (_selectedBatchId != null &&
+                        current?.status != 'completed') {
+                      return;
+                    }
+                    setState(
+                      () => _selectedBatchId = editableBatches.first.batchId,
+                    );
                   });
                 }
-
-                final selectedBatch = _findBatchById(batches, _selectedBatchId);
 
                 return ListView(
                   padding: const EdgeInsets.fromLTRB(20, 12, 20, 28),
@@ -507,12 +687,23 @@ class _AddEventScreenState extends ConsumerState<AddEventScreen> {
                             ),
                             const SizedBox(height: 14),
                             _BatchDropdown(
-                              batches: batches,
+                              batches: editableBatches,
                               selectedBatchId: _selectedBatchId,
                               onChanged: (value) {
                                 setState(() => _selectedBatchId = value);
                               },
                             ),
+                            if (batches.isNotEmpty &&
+                                editableBatches.isEmpty) ...[
+                              const SizedBox(height: 12),
+                              const Text(
+                                'Tất cả lô đã hoàn thành. Muốn bổ sung nhật ký, hãy chuyển trạng thái lô về đang sản xuất/đang theo dõi.',
+                                style: TextStyle(
+                                  color: AppColors.danger,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
                             const SizedBox(height: 14),
                             DropdownButtonFormField<String>(
                               initialValue: _selectedActionType,
@@ -535,6 +726,24 @@ class _AddEventScreenState extends ConsumerState<AddEventScreen> {
                                   _syncDetailControllersForAction();
                                 });
                               },
+                            ),
+                            const SizedBox(height: 10),
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: OutlinedButton.icon(
+                                onPressed: _fillWithSampleDraft,
+                                icon: const Icon(Icons.auto_awesome_rounded),
+                                label: const Text('Điền dữ liệu mẫu thực tế'),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            const Text(
+                              'Gợi ý: có thể bấm nhiều lần để xoay qua các bộ dữ liệu mẫu theo công đoạn.',
+                              style: TextStyle(
+                                color: AppColors.muted,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
                             if ((_detailTemplateByAction[_selectedActionType] ??
                                     const <_DetailFieldSpec>[])
@@ -829,7 +1038,7 @@ class _AddEventScreenState extends ConsumerState<AddEventScreen> {
                     ),
                     const SizedBox(height: 18),
                     FilledButton.icon(
-                      onPressed: _submitting ? null : _submit,
+                      onPressed: _submitting || !canSubmit ? null : _submit,
                       icon: const Icon(Icons.cloud_upload_rounded),
                       label: const Text('Lưu nhật ký và gửi xác nhận'),
                     ),

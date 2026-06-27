@@ -1,5 +1,7 @@
 import 'package:app/core/api_client.dart';
+import 'package:app/models/live_camera.dart';
 import 'package:app/models/batch.dart';
+import 'package:app/models/product.dart';
 import 'package:dio/dio.dart';
 import 'package:http_parser/http_parser.dart';
 import 'package:image_picker/image_picker.dart';
@@ -24,13 +26,22 @@ class _UploadedMedia {
   };
 }
 
+class _BatchServiceException implements Exception {
+  const _BatchServiceException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
 class BatchService {
   BatchService({Dio? dio}) : _dio = dio ?? ApiClient.instance.dio;
 
   final Dio _dio;
 
   Future<List<Batch>> getBatches() async {
-    final response = await _dio.get('/products');
+    final response = await _dio.get('/products/my/products');
     final payload = response.data;
 
     final items = payload is List
@@ -59,11 +70,182 @@ class BatchService {
       origin: (product['origin'] ?? '').toString(),
       description: (product['description'] ?? '').toString(),
       status: (product['status'] ?? 'active').toString(),
+      initialQuantity: _numToDouble(product['initial_quantity']),
+      currentQuantity: _numToDouble(product['current_quantity']),
+      unit: (product['unit'] ?? 'kg').toString(),
       qrCodeUrl: (product['qrcode'] ?? '').toString(),
+      liveCameras: _mapLiveCameras(product['live_cameras']),
       events: events
           .map((item) => _mapTraceEvent(item as Map<String, dynamic>))
           .toList(),
     );
+  }
+
+  Future<BatchEvent> retryBlockchainEvent(String eventId) async {
+    try {
+      final response = await _dio.post(
+        '/trace/events/$eventId/retry',
+        options: Options(
+          sendTimeout: const Duration(seconds: 30),
+          receiveTimeout: const Duration(seconds: 90),
+        ),
+      );
+      final payload = response.data as Map<String, dynamic>;
+      final event =
+          (payload['event'] as Map<String, dynamic>?) ??
+          (payload['traceEvent'] as Map<String, dynamic>?) ??
+          const <String, dynamic>{};
+      return _mapTraceEvent(event);
+    } on DioException catch (error) {
+      final responseData = error.response?.data;
+      if (responseData is Map<String, dynamic>) {
+        final message =
+            responseData['msg'] ??
+            responseData['message'] ??
+            responseData['error'];
+        if (message != null && message.toString().trim().isNotEmpty) {
+          throw _BatchServiceException(message.toString());
+        }
+      }
+
+      if (error.type == DioExceptionType.connectionError ||
+          error.type == DioExceptionType.connectionTimeout) {
+        throw const _BatchServiceException(
+          'Không kết nối được tới máy chủ API. Vui lòng kiểm tra lại kết nối.',
+        );
+      }
+
+      if (error.type == DioExceptionType.receiveTimeout) {
+        throw const _BatchServiceException(
+          'Blockchain phản hồi quá lâu. Vui lòng làm mới trạng thái trước khi thử lại.',
+        );
+      }
+
+      throw _BatchServiceException(
+        error.message ?? 'Không thể ghi sự kiện lên blockchain.',
+      );
+    }
+  }
+
+  Future<List<Product>> getTrashProducts() async {
+    final response = await _dio.get('/products/trash');
+    final payload = response.data;
+    final items = payload is Map<String, dynamic>
+        ? (payload['products'] as List<dynamic>? ?? const [])
+        : const <dynamic>[];
+
+    return items
+        .whereType<Map<String, dynamic>>()
+        .map(Product.fromJson)
+        .toList();
+  }
+
+  Future<Product> restoreProduct(String productId) async {
+    final response = await _dio.post('/products/$productId/restore');
+    final payload = response.data as Map<String, dynamic>;
+    final product = payload['product'] as Map<String, dynamic>? ?? const {};
+    return Product.fromJson(product);
+  }
+
+  Future<void> permanentDeleteProduct(String productId) async {
+    await _dio.delete('/products/$productId/permanent');
+  }
+
+  Future<void> deleteProduct(String productId) async {
+    await _dio.delete('/products/$productId');
+  }
+
+  Future<void> splitProduct({
+    required String productId,
+    required double quantity,
+    required String childName,
+    required double childQuantity,
+    String? note,
+  }) async {
+    await _dio.post(
+      '/products/$productId/split',
+      data: {
+        'quantity': quantity,
+        'note': note,
+        'children': [
+          {
+            if (childName.trim().isNotEmpty) 'name': childName.trim(),
+            'quantity': childQuantity,
+          },
+        ],
+      },
+    );
+  }
+
+  Future<void> mergeProducts({
+    required String sourceA,
+    required String sourceB,
+    String? targetName,
+    double? targetQuantity,
+    String? note,
+  }) async {
+    final cleanTargetName = (targetName ?? '').trim();
+    final data = <String, dynamic>{
+      'sources': [
+        {'product': sourceA},
+        {'product': sourceB},
+      ],
+      'target': {
+        if (cleanTargetName.isNotEmpty) 'name': cleanTargetName,
+      },
+      'note': note,
+    };
+    if (targetQuantity != null) data['target_quantity'] = targetQuantity;
+
+    await _dio.post(
+      '/products/merge',
+      data: data,
+    );
+  }
+
+  Future<void> recallProduct({
+    required String productId,
+    double? quantity,
+    required String reason,
+    String? note,
+    String? location,
+    String status = 'IN_PROGRESS',
+  }) async {
+    final data = <String, dynamic>{
+      'reason': reason.trim(),
+      'note': note,
+      'location': location,
+      'status': status,
+    };
+    if (quantity != null) data['quantity'] = quantity;
+
+    await _dio.post(
+      '/products/$productId/recall',
+      data: data,
+    );
+  }
+
+  Future<Batch> updateProduct({
+    required String productId,
+    required String name,
+    required String category,
+    required String description,
+    required String origin,
+    required String status,
+  }) async {
+    final response = await _dio.patch(
+      '/products/$productId',
+      data: {
+        'name': name.trim(),
+        'category': category.trim(),
+        'description': description.trim(),
+        'origin': origin.trim(),
+        'status': status,
+      },
+    );
+    final payload = response.data as Map<String, dynamic>;
+    final product = payload['product'] as Map<String, dynamic>? ?? const {};
+    return _mapProductToBatch(product);
   }
 
   Future<CreateEventResult> addFarmingEvent({
@@ -130,6 +312,7 @@ class BatchService {
   }
 
   Batch _mapProductToBatch(Map<String, dynamic> product) {
+    final events = product['events'] as List<dynamic>? ?? const [];
     return Batch(
       id: (product['_id'] ?? '').toString(),
       batchId: (product['_id'] ?? '').toString(),
@@ -138,9 +321,73 @@ class BatchService {
       origin: (product['origin'] ?? '').toString(),
       description: (product['description'] ?? '').toString(),
       status: (product['status'] ?? 'active').toString(),
+      initialQuantity: _numToDouble(product['initial_quantity']),
+      currentQuantity: _numToDouble(product['current_quantity']),
+      unit: (product['unit'] ?? 'kg').toString(),
       qrCodeUrl: (product['qrcode'] ?? '').toString(),
-      events: const [],
+      liveCameras: _mapLiveCameras(product['live_cameras']),
+      events: events
+          .whereType<Map<String, dynamic>>()
+          .map(_mapTraceEvent)
+          .toList(),
     );
+  }
+
+  List<LiveCamera> _mapLiveCameras(dynamic raw) {
+    if (raw is! List) return const [];
+
+    return raw
+        .whereType<Map<String, dynamic>>()
+        .map(LiveCamera.fromJson)
+        .where((camera) => camera.isActive && camera.streamUrl.isNotEmpty)
+        .toList();
+  }
+
+  double _numToDouble(dynamic raw) {
+    if (raw is num) return raw.toDouble();
+    return double.tryParse(raw?.toString() ?? '') ?? 0;
+  }
+
+  Future<List<LiveCamera>> getProductCameras(String productId) async {
+    final response = await _dio.get('/products/$productId');
+    final payload = response.data as Map<String, dynamic>;
+    final product = payload['product'] as Map<String, dynamic>? ?? const {};
+    final raw = product['live_cameras'] as List<dynamic>? ?? const [];
+
+    return raw
+        .whereType<Map<String, dynamic>>()
+        .map(LiveCamera.fromJson)
+        .toList();
+  }
+
+  Future<List<LiveCamera>> updateProductCameras({
+    required String productId,
+    required List<LiveCamera> cameras,
+  }) async {
+    final response = await _dio.patch(
+      '/products/$productId/cameras',
+      data: {
+        'live_cameras': cameras
+            .map(
+              (camera) => {
+                'name': camera.name.trim(),
+                'stream_url': camera.streamUrl.trim(),
+                'location': camera.location.trim(),
+                'is_active': camera.isActive,
+              },
+            )
+            .toList(),
+      },
+    );
+
+    final payload = response.data as Map<String, dynamic>;
+    final product = payload['product'] as Map<String, dynamic>? ?? const {};
+    final raw = product['live_cameras'] as List<dynamic>? ?? const [];
+
+    return raw
+        .whereType<Map<String, dynamic>>()
+        .map(LiveCamera.fromJson)
+        .toList();
   }
 
   BatchEvent _mapTraceEvent(Map<String, dynamic> event) {

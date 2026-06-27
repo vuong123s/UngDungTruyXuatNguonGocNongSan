@@ -1,5 +1,5 @@
 import FarmingArea from '../models/FarmingArea';
-import { BadRequestError, NotFoundError } from '../utils/errors';
+import { BadRequestError, NotFoundError, UnauthorizedError } from '../utils/errors';
 
 export const getAllFarmingAreas = async () => {
   return FarmingArea.find({})
@@ -65,8 +65,18 @@ export const updateFarmingArea = async (
     images: { path: string; filename: string }[];
     certifications: string[];
     status: 'active' | 'inactive';
-  }>
+  }>,
+  userId: string,
+  userRole: string
 ) => {
+  const current = await FarmingArea.findById(id);
+  if (!current) {
+    throw new NotFoundError(`Không tìm thấy vùng canh tác ${id}`);
+  }
+  if (userRole === 'farmer' && current.owner.toString() !== userId) {
+    throw new UnauthorizedError('Bạn chỉ được chỉnh sửa vùng trồng của mình');
+  }
+
   const farmingArea = await FarmingArea.findByIdAndUpdate(id, data, {
     new: true,
     runValidators: true,

@@ -1,213 +1,47 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../core/hooks/useAuth';
-import { colors, spacing, borderRadius, shadows, typography } from '../../core/theme';
+import './LoginPage.css';
 
 const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
-    try {
-      await login(email, password);
-      navigate('/');
-    } catch (err: any) {
-      setError(err.message || 'Đăng nhập thất bại');
-    }
-    setLoading(false);
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault(); setError(''); setLoading(true);
+    try { await login(email, password); navigate('/'); }
+    catch (err: any) { setError(err.message || 'Đăng nhập thất bại'); }
+    finally { setLoading(false); }
   };
 
-  const inputStyle: React.CSSProperties = {
-    width: '100%',
-    padding: `${spacing[4]} ${spacing[4]}`,
-    border: `1px solid ${colors.neutral[300]}`,
-    borderRadius: borderRadius.lg,
-    fontSize: typography.sizes.base,
-    outline: 'none',
-    transition: 'border-color 0.2s ease, box-shadow 0.2s ease',
-    boxSizing: 'border-box',
-  };
+  return <main className="login-page">
+    <section className="login-story">
+      <a className="login-brand" href="/" aria-label="AgriTrace"><span>🌿</span><div><strong>AgriTrace</strong><small>Trust every harvest</small></div></a>
+      <div className="login-story-copy"><span className="login-kicker">Minh bạch từ nông trại</span><h1>Mỗi sản phẩm<br />mang một <em>câu chuyện.</em></h1><p>Kết nối nông hộ, nhà quản lý và người tiêu dùng bằng dữ liệu truy xuất đáng tin cậy.</p><div className="login-proof"><div><strong>100%</strong><small>Dữ liệu có thể xác minh</small></div><div><strong>24/7</strong><small>Theo dõi chuỗi cung ứng</small></div></div></div>
+      <div className="login-orbit orbit-one" /><div className="login-orbit orbit-two" /><span className="login-leaf">⌁</span>
+    </section>
 
-  return (
-    <div style={{ 
-      minHeight: '100vh', 
-      display: 'flex', 
-      alignItems: 'center', 
-      justifyContent: 'center',
-      background: colors.background,
-      padding: spacing[4],
-    }}>
-      <div style={{
-        width: '100%',
-        maxWidth: 420,
-      }}>
-        {/* Logo Section */}
-        <div style={{ textAlign: 'center', marginBottom: spacing[10] }}>
-          <div style={{
-            width: 72,
-            height: 72,
-            background: `linear-gradient(135deg, ${colors.primary[500]}, ${colors.primary[700]})`,
-            borderRadius: borderRadius.xl,
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            marginBottom: spacing[4],
-            boxShadow: shadows.lg,
-          }}>
-            <span style={{ fontSize: 36 }}>🌿</span>
-          </div>
-          <h1 style={{ 
-            fontSize: typography.sizes['3xl'], 
-            fontWeight: typography.weights.bold,
-            color: colors.textPrimary,
-            margin: 0,
-          }}>
-            AgriTrace
-          </h1>
-          <p style={{ 
-            color: colors.textSecondary, 
-            marginTop: spacing[2],
-            fontSize: typography.sizes.base,
-          }}>
-            Hệ thống truy xuất nguồn gốc nông sản
-          </p>
-        </div>
-
-        {/* Login Card */}
-        <div style={{
-          background: colors.surface,
-          borderRadius: borderRadius.xl,
-          boxShadow: shadows.lg,
-          padding: spacing[10],
-          border: `1px solid ${colors.neutral[200]}`,
-        }}>
-          <h2 style={{ 
-            fontSize: typography.sizes.xl, 
-            fontWeight: typography.weights.semibold,
-            color: colors.textPrimary,
-            marginBottom: spacing[6],
-            textAlign: 'center',
-          }}>
-            Đăng nhập
-          </h2>
-
-          <form onSubmit={handleSubmit}>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: spacing[5] }}>
-              {/* Email Field */}
-              <div>
-                <label style={{ 
-                  display: 'block', 
-                  marginBottom: spacing[2], 
-                  fontWeight: typography.weights.medium,
-                  fontSize: typography.sizes.sm,
-                  color: colors.textPrimary,
-                }}>
-                  Email
-                </label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="your@email.com"
-                  required
-                  style={inputStyle}
-                  onFocus={(e) => {
-                    e.target.style.borderColor = colors.primary[500];
-                    e.target.style.boxShadow = `0 0 0 3px ${colors.primary[100]}`;
-                  }}
-                  onBlur={(e) => {
-                    e.target.style.borderColor = colors.neutral[300];
-                    e.target.style.boxShadow = 'none';
-                  }}
-                />
-              </div>
-
-              {/* Password Field */}
-              <div>
-                <label style={{ 
-                  display: 'block', 
-                  marginBottom: spacing[2], 
-                  fontWeight: typography.weights.medium,
-                  fontSize: typography.sizes.sm,
-                  color: colors.textPrimary,
-                }}>
-                  Mật khẩu
-                </label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                  required
-                  style={inputStyle}
-                  onFocus={(e) => {
-                    e.target.style.borderColor = colors.primary[500];
-                    e.target.style.boxShadow = `0 0 0 3px ${colors.primary[100]}`;
-                  }}
-                  onBlur={(e) => {
-                    e.target.style.borderColor = colors.neutral[300];
-                    e.target.style.boxShadow = 'none';
-                  }}
-                />
-              </div>
-
-              {/* Error Message */}
-              {error && (
-                <div style={{
-                  background: '#fef2f2',
-                  color: colors.error,
-                  padding: spacing[4],
-                  borderRadius: borderRadius.lg,
-                  fontSize: typography.sizes.sm,
-                  textAlign: 'center',
-                }}>
-                  {error}
-                </div>
-              )}
-
-              {/* Submit Button */}
-              <button
-                type="submit"
-                disabled={loading}
-                style={{
-                  width: '100%',
-                  padding: `${spacing[4]} ${spacing[6]}`,
-                  background: loading ? colors.neutral[400] : colors.primary[600],
-                  color: 'white',
-                  border: 'none',
-                  borderRadius: borderRadius.lg,
-                  fontSize: typography.sizes.base,
-                  fontWeight: typography.weights.semibold,
-                  cursor: loading ? 'not-allowed' : 'pointer',
-                  transition: 'all 0.2s ease',
-                  marginTop: spacing[2],
-                }}
-              >
-                {loading ? 'Đang đăng nhập...' : 'Đăng nhập'}
-              </button>
-            </div>
-          </form>
-        </div>
-
-        {/* Footer */}
-        <p style={{ 
-          textAlign: 'center', 
-          marginTop: spacing[6], 
-          color: colors.textMuted,
-          fontSize: typography.sizes.sm,
-        }}>
-          © 2024 AgriTrace. Truy xuất minh bạch, tiêu dùng an tâm.
-        </p>
+    <section className="login-form-side">
+      <div className="login-card">
+        <div className="login-mobile-brand"><span>🌿</span><strong>AgriTrace</strong></div>
+        <span className="login-welcome">Chào mừng trở lại</span><h2>Đăng nhập tài khoản</h2><p className="login-subtitle">Tiếp tục quản lý hành trình nông sản của bạn.</p>
+        <form onSubmit={handleSubmit}>
+          <label>Email<span className="login-input"><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4zM4 7l8 6 8-6" /></svg><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="name@example.com" autoComplete="email" required /></span></label>
+          <label>Mật khẩu<span className="login-input"><svg viewBox="0 0 24 24"><path d="M6 10V7a6 6 0 0 1 12 0v3M4 10h16v11H4z" /></svg><input type={showPassword ? 'text' : 'password'} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Nhập mật khẩu" autoComplete="current-password" required /><button type="button" onClick={() => setShowPassword((value) => !value)}>{showPassword ? 'Ẩn' : 'Hiện'}</button></span></label>
+          <div className="login-options"><label><input type="checkbox" /> Ghi nhớ đăng nhập</label><a href="/forgot-password">Quên mật khẩu?</a></div>
+          {error && <div className="login-error" role="alert">{error}</div>}
+          <button className="login-submit" type="submit" disabled={loading}>{loading ? <><i /> Đang đăng nhập...</> : <>Đăng nhập <span>→</span></>}</button>
+        </form>
+        <div className="login-divider"><span>Truy xuất công khai không cần đăng nhập</span></div>
+        <p className="login-help">Cần hỗ trợ? <a href="mailto:support@agritrace.vn">Liên hệ quản trị viên</a></p>
       </div>
-    </div>
-  );
+      <footer>© 2026 AgriTrace · Nền tảng truy xuất nguồn gốc nông sản</footer>
+    </section>
+  </main>;
 };
-
 export default LoginPage;

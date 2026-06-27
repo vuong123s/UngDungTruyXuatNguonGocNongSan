@@ -8,6 +8,30 @@ interface TxResult {
 }
 
 export const hashEventData = (data: Record<string, unknown>): string => {
+  const canonicalize = (value: unknown): unknown => {
+    if (Array.isArray(value)) {
+      return value.map(canonicalize);
+    }
+
+    if (value && typeof value === 'object') {
+      return Object.fromEntries(
+        Object.entries(value as Record<string, unknown>)
+          .filter(([, nestedValue]) => nestedValue !== undefined)
+          .sort(([left], [right]) => left.localeCompare(right))
+          .map(([key, nestedValue]) => [key, canonicalize(nestedValue)])
+      );
+    }
+
+    return value;
+  };
+
+  const canonicalJson = JSON.stringify(canonicalize(data));
+  return ethers.keccak256(ethers.toUtf8Bytes(canonicalJson));
+};
+
+export const hashEventDataLegacy = (
+  data: Record<string, unknown>
+): string => {
   const sorted = JSON.stringify(data, Object.keys(data).sort());
   return ethers.keccak256(ethers.toUtf8Bytes(sorted));
 };
@@ -79,13 +103,21 @@ export const getHistoryFromChain = async (
 export const verifyActionOnChain = async (
   batchId: string,
   actionIndex: number,
-  eventData: Record<string, unknown>
-): Promise<{ verified: boolean; dataHash: string }> => {
+  eventData: Record<string, unknown>,
+  hashVersion: 'v1' | 'v2' = 'v2'
+): Promise<{
+  verified: boolean;
+  dataHash: string;
+  dataHashVersion: 'v1' | 'v2';
+}> => {
   const contract = getReadonlyContract();
-  const dataHash = hashEventData(eventData);
+  const dataHash =
+    hashVersion === 'v1'
+      ? hashEventDataLegacy(eventData)
+      : hashEventData(eventData);
   const verified = await contract.verifyAction(batchId, actionIndex, dataHash);
 
-  return { verified, dataHash };
+  return { verified, dataHash, dataHashVersion: hashVersion };
 };
 
 export const batchExistsOnChain = async (batchId: string): Promise<boolean> => {
