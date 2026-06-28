@@ -1,5 +1,6 @@
 import 'package:app/screens/camera_management_screen.dart';
 import 'package:app/screens/add_event_screen.dart';
+import 'package:app/screens/create_product_screen.dart';
 import 'package:app/screens/farmer/farmer_dashboard_screen.dart';
 import 'package:app/screens/forgot_password_screen.dart';
 import 'package:app/screens/edit_product_screen.dart';
@@ -13,6 +14,7 @@ import 'package:app/screens/notifications_screen.dart';
 import 'package:app/screens/qr_scanner_screen.dart';
 import 'package:app/screens/register_screen.dart';
 import 'package:app/screens/timeline_screen.dart';
+import 'package:app/widgets/app_tab_scaffold.dart';
 import 'package:flutter/material.dart';
 
 class AppRouter {
@@ -25,6 +27,7 @@ class AppRouter {
   static const farmer = '/farmer';
   static const scanner = '/scanner';
   static const addEvent = '/add-event';
+  static const createProduct = '/create-product';
   static const notifications = '/notifications';
   static const cameras = '/cameras';
   static const management = '/management';
@@ -45,7 +48,10 @@ class AppRouter {
             uri.queryParameters['batchId'] ??
             uri.queryParameters['productId'] ??
             (settings.arguments as String?);
-        return _page(TimelineScreen(initialBatchId: batchId));
+        return _tabPage(
+          TimelineScreen(initialBatchId: batchId),
+          AppTab.journal,
+        );
 
       case login:
         return _page(const LoginScreen());
@@ -57,17 +63,23 @@ class AppRouter {
         return _page(const ForgotPasswordScreen());
 
       case farmer:
-        return _page(const FarmerDashboardScreen());
+        return _tabPage(const FarmerDashboardScreen(), AppTab.journal);
 
       case scanner:
-        return _page(const QrScannerScreen());
+        return _tabPage(const QrScannerScreen(), AppTab.scanner);
 
       case addEvent:
         final batchId =
             uri.queryParameters['batchId'] ??
             uri.queryParameters['productId'] ??
             (settings.arguments as String?);
-        return _page(AddEventScreen(initialBatchId: batchId));
+        return _tabPage(
+          AddEventScreen(initialBatchId: batchId),
+          AppTab.journal,
+        );
+
+      case createProduct:
+        return _tabPage(const CreateProductScreen(), AppTab.journal);
 
       case notifications:
         return _page(const NotificationsScreen());
@@ -78,24 +90,29 @@ class AppRouter {
             uri.queryParameters['productId'] ??
             (settings.arguments as String?);
         if (batchId == null || batchId.isEmpty) {
-          return _page(const FarmerDashboardScreen());
+          return _tabPage(const FarmerDashboardScreen(), AppTab.journal);
         }
-        return _page(CameraManagementScreen(batchId: batchId));
+        return _tabPage(CameraManagementScreen(batchId: batchId), AppTab.journal);
 
       case management:
         final tab = int.tryParse(uri.queryParameters['tab'] ?? '') ?? 0;
-        return _page(ManagementHubScreen(initialTab: tab));
+        return _tabPage(
+          ManagementHubScreen(initialTab: tab),
+          tab == 1 ? AppTab.farmingArea : AppTab.quality,
+        );
 
       case editProduct:
         final batch = settings.arguments as Batch?;
-        if (batch == null) return _page(const FarmerDashboardScreen());
-        return _page(EditProductScreen(batch: batch));
+        if (batch == null) {
+          return _tabPage(const FarmerDashboardScreen(), AppTab.journal);
+        }
+        return _tabPage(EditProductScreen(batch: batch), AppTab.journal);
 
       case diseaseDetection:
-        return _page(const DiseaseDetectionScreen());
+        return _tabPage(const DiseaseDetectionScreen(), AppTab.disease);
 
       case productTrash:
-        return _page(const ProductTrashScreen());
+        return _tabPage(const ProductTrashScreen(), AppTab.trash);
 
       default:
         return _page(const HomeScreen());
@@ -104,5 +121,9 @@ class AppRouter {
 
   static MaterialPageRoute _page(Widget child) {
     return MaterialPageRoute(builder: (_) => child);
+  }
+
+  static MaterialPageRoute _tabPage(Widget child, AppTab selectedTab) {
+    return _page(AppTabScaffold(selectedTab: selectedTab, child: child));
   }
 }

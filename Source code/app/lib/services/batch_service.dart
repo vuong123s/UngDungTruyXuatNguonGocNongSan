@@ -225,6 +225,33 @@ class BatchService {
     );
   }
 
+  Future<Batch> createProduct({
+    required String name,
+    required String category,
+    required String type,
+    required String description,
+    required String origin,
+    required double initialQuantity,
+    required String unit,
+  }) async {
+    final response = await _dio.post(
+      '/products',
+      data: {
+        'name': name.trim(),
+        'category': category.trim(),
+        'type': type,
+        'description': description.trim(),
+        'origin': origin.trim(),
+        'initial_quantity': initialQuantity,
+        'current_quantity': initialQuantity,
+        'unit': unit.trim().isEmpty ? 'kg' : unit.trim(),
+      },
+    );
+    final payload = response.data as Map<String, dynamic>;
+    final product = payload['product'] as Map<String, dynamic>? ?? const {};
+    return _mapProductToBatch(product);
+  }
+
   Future<Batch> updateProduct({
     required String productId,
     required String name,

@@ -31,63 +31,8 @@ class _FarmerDashboardScreenState extends ConsumerState<FarmerDashboardScreen> {
     final authData = ref.watch(authStateProvider);
     final role =
         (authData?['user']?['role'] ?? authData?['role'] ?? '').toString();
-    final canManageTrash = role == 'admin' || role == 'manager';
 
     return Scaffold(
-      bottomNavigationBar: _DashboardBottomNavBar(
-        selectedIndex: 0,
-        items: [
-          _DashboardNavItemData(
-            icon: Icons.add_circle_outline_rounded,
-            label: 'Nhật ký',
-            color: const Color(0xFF2F8F4D),
-            onTap: () => Navigator.pushNamed(context, AppRouter.addEvent),
-          ),
-          _DashboardNavItemData(
-            icon: Icons.qr_code_scanner_rounded,
-            label: 'Quét QR',
-            color: const Color(0xFF406CBE),
-            onTap: () => Navigator.pushNamed(context, AppRouter.scanner),
-          ),
-          _DashboardNavItemData(
-            icon: Icons.science_outlined,
-            label: 'Kiểm nghiệm',
-            color: const Color(0xFF7A5BB8),
-            onTap: () => Navigator.pushNamed(
-              context,
-              '${AppRouter.management}?tab=0',
-            ),
-          ),
-          _DashboardNavItemData(
-            icon: Icons.landscape_outlined,
-            label: 'Vùng trồng',
-            color: const Color(0xFFB2762C),
-            onTap: () => Navigator.pushNamed(
-              context,
-              '${AppRouter.management}?tab=1',
-            ),
-          ),
-          _DashboardNavItemData(
-            icon: Icons.health_and_safety_outlined,
-            label: 'Bệnh cây',
-            color: const Color(0xFFB83232),
-            onTap: () => Navigator.pushNamed(
-              context,
-              AppRouter.diseaseDetection,
-            ),
-          ),
-          if (canManageTrash)
-            _DashboardNavItemData(
-              icon: Icons.delete_outline_rounded,
-              label: 'Thùng rác',
-              color: const Color(0xFF64748B),
-              onTap: () => Navigator.pushNamed(
-                context,
-                AppRouter.productTrash,
-              ),
-            ),
-        ],
-      ),
       body: GlassPageBackground(
         child: SafeArea(
           child: batchesAsync.when(
@@ -128,7 +73,7 @@ class _FarmerDashboardScreenState extends ConsumerState<FarmerDashboardScreen> {
                 onRefresh: () async => ref.invalidate(batchListProvider),
                 child: ListView(
                   physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(20, 14, 20, 104),
+                  padding: const EdgeInsets.fromLTRB(20, 14, 20, 118),
                   children: [
                     Row(
                       children: [
@@ -289,6 +234,15 @@ class _FarmerDashboardScreenState extends ConsumerState<FarmerDashboardScreen> {
                             style: Theme.of(context).textTheme.titleLarge,
                           ),
                         ),
+                        IconButton.filledTonal(
+                          tooltip: 'Thêm lô mới',
+                          onPressed: () => Navigator.pushNamed(
+                            context,
+                            AppRouter.createProduct,
+                          ),
+                          icon: const Icon(Icons.add_rounded),
+                        ),
+                        const SizedBox(width: 6),
                         TextButton.icon(
                           onPressed: () => ref.invalidate(batchListProvider),
                           icon: const Icon(Icons.refresh_rounded),
@@ -413,181 +367,6 @@ class _MetricTile extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _DashboardNavItemData {
-  const _DashboardNavItemData({
-    required this.icon,
-    required this.label,
-    required this.color,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String label;
-  final Color color;
-  final VoidCallback onTap;
-}
-
-class _DashboardBottomNavBar extends StatelessWidget {
-  const _DashboardBottomNavBar({
-    required this.items,
-    required this.selectedIndex,
-  });
-
-  final List<_DashboardNavItemData> items;
-  final int selectedIndex;
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(
-      top: false,
-      child: Container(
-        margin: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(28),
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.forest.withValues(alpha: 0.12),
-              blurRadius: 24,
-              offset: const Offset(0, 8),
-            ),
-          ],
-        ),
-        child: _DashboardActionNavBar(
-          items: items,
-          selectedIndex: selectedIndex,
-        ),
-      ),
-    );
-  }
-}
-
-class _DashboardActionNavBar extends StatelessWidget {
-  const _DashboardActionNavBar({
-    required this.items,
-    required this.selectedIndex,
-  });
-
-  final List<_DashboardNavItemData> items;
-  final int selectedIndex;
-
-  @override
-  Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(28),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.88),
-          borderRadius: BorderRadius.circular(28),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.72)),
-        ),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            const gap = 6.0;
-            final available = constraints.maxWidth - gap * (items.length - 1);
-            final fittedWidth = available / items.length;
-            final itemWidth = fittedWidth.clamp(58.0, 92.0);
-            final needsScroll = fittedWidth < 58;
-
-            final row = Row(
-              mainAxisSize: needsScroll ? MainAxisSize.min : MainAxisSize.max,
-              children: [
-                for (var index = 0; index < items.length; index++) ...[
-                  _DashboardActionNavItem(
-                    item: items[index],
-                    isSelected: index == selectedIndex,
-                    width: itemWidth,
-                  ),
-                  if (index != items.length - 1) const SizedBox(width: gap),
-                ],
-              ],
-            );
-
-            if (!needsScroll) return row;
-            return SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              physics: const BouncingScrollPhysics(),
-              child: row,
-            );
-          },
-        ),
-      ),
-    );
-  }
-}
-
-class _DashboardActionNavItem extends StatelessWidget {
-  const _DashboardActionNavItem({
-    required this.item,
-    required this.isSelected,
-    required this.width,
-  });
-
-  final _DashboardNavItemData item;
-  final bool isSelected;
-  final double width;
-
-  @override
-  Widget build(BuildContext context) {
-    final background = isSelected
-        ? item.color
-        : item.color.withValues(alpha: 0.11);
-    final foreground = isSelected ? Colors.white : item.color;
-    final labelStyle = TextStyle(
-      color: foreground,
-      fontSize: width < 64 ? 9.2 : 10,
-      fontWeight: FontWeight.w900,
-      height: 1.05,
-    );
-
-    return Semantics(
-      button: true,
-      selected: isSelected,
-      label: item.label,
-      child: Tooltip(
-        message: item.label,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOut,
-          decoration: BoxDecoration(
-            color: background,
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Material(
-            color: Colors.transparent,
-            borderRadius: BorderRadius.circular(20),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(20),
-              onTap: item.onTap,
-              child: SizedBox(
-                width: width,
-                height: 58,
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(item.icon, color: foreground, size: 21),
-                    const SizedBox(height: 5),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 2),
-                      child: Text(
-                        item.label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.center,
-                        style: labelStyle,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
       ),
     );
   }
@@ -1009,26 +788,40 @@ class _BatchActionNavBar extends StatelessWidget {
         borderRadius: BorderRadius.circular(26),
         border: Border.all(color: Colors.white.withValues(alpha: 0.52)),
       ),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        physics: const BouncingScrollPhysics(),
-        child: Row(
-          children: [
-            for (var index = 0; index < items.length; index++) ...[
-              _BatchActionNavItem(item: items[index]),
-              if (index != items.length - 1) const SizedBox(width: 6),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          const gap = 6.0;
+          final available = constraints.maxWidth - gap * (items.length - 1);
+          final fittedWidth = available / items.length;
+          final itemWidth = fittedWidth.clamp(58.0, 82.0);
+          final needsScroll = fittedWidth < 58;
+          final row = Row(
+            mainAxisSize: needsScroll ? MainAxisSize.min : MainAxisSize.max,
+            children: [
+              for (var index = 0; index < items.length; index++) ...[
+                _BatchActionNavItem(item: items[index], width: itemWidth),
+                if (index != items.length - 1) const SizedBox(width: gap),
+              ],
             ],
-          ],
-        ),
+          );
+
+          if (!needsScroll) return row;
+          return SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            physics: const BouncingScrollPhysics(),
+            child: row,
+          );
+        },
       ),
     );
   }
 }
 
 class _BatchActionNavItem extends StatelessWidget {
-  const _BatchActionNavItem({required this.item});
+  const _BatchActionNavItem({required this.item, required this.width});
 
   final _BatchNavItemData item;
+  final double width;
 
   @override
   Widget build(BuildContext context) {
@@ -1044,7 +837,7 @@ class _BatchActionNavItem extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         onTap: item.onTap,
         child: SizedBox(
-          width: 74,
+          width: width,
           height: 64,
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -1086,9 +879,10 @@ class _BatchActionNavItem extends StatelessWidget {
                 item.label,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
                 style: TextStyle(
                   color: foreground,
-                  fontSize: 11,
+                  fontSize: width < 64 ? 9.5 : 10.5,
                   fontWeight: FontWeight.w900,
                 ),
               ),
