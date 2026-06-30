@@ -1,5 +1,8 @@
+import 'dart:convert';
+
 import 'package:app/core/router.dart';
 import 'package:app/core/theme.dart';
+import 'package:app/models/batch.dart';
 import 'package:app/providers/providers.dart';
 import 'package:app/widgets/liquid_glass.dart';
 import 'package:flutter/material.dart';
@@ -14,27 +17,59 @@ class CreateProductScreen extends ConsumerStatefulWidget {
 }
 
 class _CreateProductScreenState extends ConsumerState<CreateProductScreen> {
+  static const _categories = [
+    'Xoài',
+    'Lúa',
+    'Rau thủy canh',
+    'Cà chua',
+    'Sầu riêng',
+    'Thanh long',
+    'Cà phê',
+    'Hồ tiêu',
+  ];
+  static const _units = ['kg', 'tấn', 'thùng', 'bao', 'bó', 'con'];
+
   final _formKey = GlobalKey<FormState>();
   final _name = TextEditingController();
-  final _category = TextEditingController();
   final _origin = TextEditingController();
   final _description = TextEditingController();
   final _quantity = TextEditingController();
-  final _unit = TextEditingController(text: 'kg');
 
+  String _category = _categories.first;
   String _type = 'Plant';
+  String _unit = _units.first;
+  String? _farmingArea;
+  bool _loadingAreas = true;
   bool _saving = false;
   String? _error;
+  List<Map<String, dynamic>> _areas = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadAreas();
+  }
 
   @override
   void dispose() {
     _name.dispose();
-    _category.dispose();
     _origin.dispose();
     _description.dispose();
     _quantity.dispose();
-    _unit.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadAreas() async {
+    try {
+      final areas = await ref.read(managementServiceProvider).getFarmingAreas();
+      if (!mounted) return;
+      setState(() {
+        _areas = areas;
+        _loadingAreas = false;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _loadingAreas = false);
+    }
   }
 
   Future<void> _save() async {
@@ -48,27 +83,36 @@ class _CreateProductScreenState extends ConsumerState<CreateProductScreen> {
       });
       final batch = await ref.read(batchServiceProvider).createProduct(
             name: _name.text,
-            category: _category.text,
+            category: _category,
             type: _type,
             description: _description.text,
             origin: _origin.text,
             initialQuantity: quantity,
-            unit: _unit.text,
+            unit: _unit,
+            farmingArea: _farmingArea,
           );
       ref.invalidate(batchListProvider);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Đã tạo lô mới.')),
-      );
-      Navigator.pushReplacementNamed(
-        context,
-        '${AppRouter.timeline}?batchId=${batch.batchId}',
-      );
+      await _showCreatedSheet(batch);
     } catch (error) {
       if (mounted) setState(() => _error = error.toString());
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  Future<void> _showCreatedSheet(Batch batch) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => _CreatedProductSheet(batch: batch),
+    );
+    if (!mounted) return;
+    Navigator.pushReplacementNamed(
+      context,
+      '${AppRouter.timeline}?batchId=${batch.batchId}',
+    );
   }
 
   @override
@@ -124,14 +168,22 @@ class _CreateProductScreenState extends ConsumerState<CreateProductScreen> {
                       validator: _required,
                     ),
                     const SizedBox(height: 12),
-                    TextFormField(
-                      controller: _category,
+                    DropdownButtonFormField<String>(
+                      initialValue: _category,
                       decoration: const InputDecoration(
                         labelText: 'Danh mục',
-                        hintText: 'Ví dụ: Xoài, Lúa, Rau thủy canh...',
                         prefixIcon: Icon(Icons.category_outlined),
                       ),
-                      validator: _required,
+                      items: _categories
+                          .map(
+                            (item) => DropdownMenuItem(
+                              value: item,
+                              child: Text(item),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (value) =>
+                          setState(() => _category = value ?? _category),
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
@@ -158,10 +210,41 @@ class _CreateProductScreenState extends ConsumerState<CreateProductScreen> {
                       controller: _origin,
                       decoration: const InputDecoration(
                         labelText: 'Xuất xứ',
-                        hintText: 'Ví dụ: Cái Bè, Tiền Giang',
+                        hintText: 'Để trống nếu đã chọn vùng trồng',
                         prefixIcon: Icon(Icons.place_outlined),
                       ),
-                      validator: _required,
+                      validator: (value) {
+                        if (_farmingArea != null) return null;
+                        return _required(value);
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      initialValue: _farmingArea,
+                      decoration: InputDecoration(
+                        labelText: _loadingAreas
+                            ? 'Đang tải vùng trồng...'
+                            : 'Vùng trồng',
+                        prefixIcon: const Icon(Icons.landscape_outlined),
+                      ),
+                      items: [
+                        const DropdownMenuItem<String>(
+                          value: null,
+                          child: Text('Không gắn vùng trồng'),
+                        ),
+                        ..._areas.map(
+                          (area) => DropdownMenuItem<String>(
+                            value: area['_id']?.toString(),
+                            child: Text(
+                              (area['name'] ?? 'Vùng trồng').toString(),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ),
+                      ],
+                      onChanged: _loadingAreas
+                          ? null
+                          : (value) => setState(() => _farmingArea = value),
                     ),
                     const SizedBox(height: 12),
                     Row(
@@ -182,13 +265,21 @@ class _CreateProductScreenState extends ConsumerState<CreateProductScreen> {
                         ),
                         const SizedBox(width: 12),
                         Expanded(
-                          child: TextFormField(
-                            controller: _unit,
+                          child: DropdownButtonFormField<String>(
+                            initialValue: _unit,
                             decoration: const InputDecoration(
                               labelText: 'Đơn vị',
-                              hintText: 'kg',
                             ),
-                            validator: _required,
+                            items: _units
+                                .map(
+                                  (unit) => DropdownMenuItem(
+                                    value: unit,
+                                    child: Text(unit),
+                                  ),
+                                )
+                                .toList(),
+                            onChanged: (value) =>
+                                setState(() => _unit = value ?? _unit),
                           ),
                         ),
                       ],
@@ -246,5 +337,94 @@ class _CreateProductScreenState extends ConsumerState<CreateProductScreen> {
     final parsed = double.tryParse((value ?? '').trim().replaceAll(',', '.'));
     if (parsed == null || parsed < 0) return 'Số lượng không hợp lệ';
     return null;
+  }
+}
+
+class _CreatedProductSheet extends StatelessWidget {
+  const _CreatedProductSheet({required this.batch});
+
+  final Batch batch;
+
+  @override
+  Widget build(BuildContext context) {
+    final code = batch.batchCode.isEmpty ? batch.batchId : batch.batchCode;
+    return GlassPanel(
+      radius: 30,
+      padding: const EdgeInsets.fromLTRB(22, 18, 22, 22),
+      colors: [
+        Colors.white.withValues(alpha: 0.96),
+        const Color(0xFFEAF6E7),
+      ],
+      child: SafeArea(
+        top: false,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 44,
+              height: 5,
+              decoration: BoxDecoration(
+                color: AppColors.muted.withValues(alpha: 0.28),
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ),
+            const SizedBox(height: 18),
+            const GlassIconCapsule(
+              icon: Icons.check_circle_outline_rounded,
+              color: AppColors.pine,
+              size: 58,
+            ),
+            const SizedBox(height: 12),
+            Text('Đã tạo lô mới', style: Theme.of(context).textTheme.titleLarge),
+            const SizedBox(height: 8),
+            SelectableText(
+              code,
+              style: const TextStyle(
+                color: AppColors.ink,
+                fontWeight: FontWeight.w900,
+                fontSize: 18,
+              ),
+            ),
+            const SizedBox(height: 14),
+            if (batch.qrCodeUrl.startsWith('data:image'))
+              ClipRRect(
+                borderRadius: BorderRadius.circular(18),
+                child: Image.memory(
+                  base64Decode(batch.qrCodeUrl.split(',').last),
+                  width: 150,
+                  height: 150,
+                  fit: BoxFit.cover,
+                ),
+              )
+            else if (batch.qrCodeUrl.isNotEmpty)
+              ClipRRect(
+                borderRadius: BorderRadius.circular(18),
+                child: Image.network(
+                  batch.qrCodeUrl,
+                  width: 150,
+                  height: 150,
+                  fit: BoxFit.cover,
+                ),
+              ),
+            const SizedBox(height: 14),
+            Text(
+              batch.qrCodeUrl.isEmpty
+                  ? 'QR chưa sẵn sàng. Bạn vẫn có thể mở timeline để tiếp tục cập nhật nhật ký.'
+                  : 'QR đã sẵn sàng để in, dán nhãn hoặc chia sẻ truy xuất.',
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 18),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () => Navigator.pop(context),
+                icon: const Icon(Icons.timeline_rounded),
+                label: const Text('Mở timeline lô'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

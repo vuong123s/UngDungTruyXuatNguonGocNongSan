@@ -5,7 +5,7 @@ import env from '../config/env';
 import User from '../models/User';
 import FarmingArea from '../models/FarmingArea';
 import Product from '../models/Product';
-import TraceEvent from '../models/TraceEvent';
+import TraceEvent, { ActionType } from '../models/TraceEvent';
 import Certification from '../models/Certification';
 import QualityInspection from '../models/QualityInspection';
 import DiseaseDetection from '../models/DiseaseDetection';
@@ -118,6 +118,118 @@ const EVENT_DESCRIPTIONS: Record<string, string> = {
   '6a33b296e364d09b32f991ae': 'Bàn giao lô hàng cho kho trung chuyển; xe lạnh duy trì nhiệt độ ổn định.',
 };
 
+const sampleImage = (filename: string) => ({
+  path: `/uploads/sample-media/${filename}`,
+  filename,
+});
+
+const sampleVideo = (filename: string) => ({
+  path: `/uploads/sample-media/${filename}`,
+  filename,
+  mimeType: 'video/mp4',
+});
+
+const EVENT_MEDIA: Record<
+  string,
+  {
+    images?: { path: string; filename: string }[];
+    videos?: { path: string; filename: string; mimeType: string }[];
+    details?: Record<string, string | number | boolean>;
+  }
+> = {
+  '6a0fda8090c8a58380d6d8d9': {
+    images: [sampleImage('mango-harvest.png')],
+    videos: [sampleVideo('harvest-field-video.mp4')],
+    details: {
+      harvestTeam: 'Tổ thu hoạch Cái Bè',
+      qualityGrade: 'Loại A',
+      temperatureC: 29,
+    },
+  },
+  '6a0fda8090c8a58380d6d8dc': {
+    images: [sampleImage('hydroponic-lettuce.png')],
+    details: {
+      ec: 1.6,
+      ph: 6.1,
+      nutrientSolution: 'Dung dịch thủy canh rau ăn lá',
+    },
+  },
+  '6a0fda8090c8a58380d6d8da': {
+    images: [sampleImage('fruit-packaging.png')],
+    videos: [sampleVideo('packing-line-video.mp4')],
+    details: {
+      packageType: 'Thùng carton 5 kg',
+      packageCount: 160,
+      inspector: 'QC-01',
+    },
+  },
+};
+
+const SAMPLE_TRACE_EVENTS: {
+  key: string;
+  product: string;
+  eventType: ActionType;
+  description: string;
+  details: Record<string, string | number | boolean>;
+  images?: { path: string; filename: string }[];
+  videos?: { path: string; filename: string; mimeType: string }[];
+}[] = [
+  {
+    key: 'mango-bagging-demo',
+    product: '6a0fdaad7ecb33512b9d4c7a',
+    eventType: 'PEST_CONTROL',
+    description: 'Bao trái xoài sau khi kiểm tra sâu bệnh, loại bỏ quả trầy xước và đánh dấu cây theo hàng.',
+    details: {
+      pestName: 'Ruồi đục quả',
+      treatment: 'Bao trái + bẫy sinh học',
+      dosage: 'Không phun hóa chất',
+      preHarvestIntervalDays: 21,
+    },
+    images: [sampleImage('mango-harvest.png')],
+  },
+  {
+    key: 'lettuce-nutrient-check-demo',
+    product: '6a0fdaae7ecb33512b9d4c7d',
+    eventType: 'WATERING',
+    description: 'Kiểm tra pH/EC dung dịch thủy canh, bổ sung nước sạch và cân bằng dinh dưỡng cho giàn rau.',
+    details: {
+      wateringMethod: 'Tuần hoàn thủy canh',
+      waterVolume: 80,
+      waterUnit: 'lít',
+      ph: 6.1,
+      ec: 1.6,
+    },
+    images: [sampleImage('hydroponic-lettuce.png')],
+  },
+  {
+    key: 'mango-postharvest-packaging-demo',
+    product: '6a0fdaad7ecb33512b9d4c7a',
+    eventType: 'PACKAGING',
+    description: 'Rửa, phân loại và đóng thùng xoài theo quy cách xuất kho, loại bỏ quả dập trước khi niêm phong.',
+    details: {
+      packageType: 'Thùng carton 5 kg',
+      packageCount: 160,
+      qualityGrade: 'Loại A',
+      storageTemperatureC: 12,
+    },
+    images: [sampleImage('fruit-packaging.png')],
+    videos: [sampleVideo('packing-line-video.mp4')],
+  },
+  {
+    key: 'tomato-cold-shipping-demo',
+    product: '6a0fdaad7ecb33512b9d4c7c',
+    eventType: 'SHIPPING',
+    description: 'Vận chuyển cà chua bằng xe lạnh đến điểm bán lẻ, kiểm tra nhiệt độ thùng trước khi niêm phong.',
+    details: {
+      vehicle: 'Xe lạnh 1.5 tấn',
+      destination: 'Điểm bán lẻ Đà Lạt',
+      distanceKm: 18,
+      temperatureC: 8.5,
+    },
+    videos: [sampleVideo('harvest-field-video.mp4')],
+  },
+];
+
 async function repairReferences(fallbackUserId: Types.ObjectId) {
   const userIds = await User.distinct('_id');
   const productIds = await Product.distinct('_id');
@@ -192,6 +304,9 @@ async function normalizeBaseData(fallbackUserId: Types.ObjectId) {
   for (const [id, description] of Object.entries(EVENT_DESCRIPTIONS)) {
     await TraceEvent.updateOne({ _id: oid(id) }, { $set: { description } });
   }
+  for (const [id, media] of Object.entries(EVENT_MEDIA)) {
+    await TraceEvent.updateOne({ _id: oid(id) }, { $set: media });
+  }
 
   await User.updateOne(
     { email: 'admin@gmail.com' },
@@ -235,6 +350,45 @@ async function normalizeBaseData(fallbackUserId: Types.ObjectId) {
   );
 
   return repairReferences(fallbackUserId);
+}
+
+async function seedTraceEventMedia(createdBy: Types.ObjectId) {
+  let traceEventsUpserted = 0;
+
+  for (const event of SAMPLE_TRACE_EVENTS) {
+    const productId = oid(event.product);
+    const product = await Product.findById(productId).select('_id');
+    if (!product) continue;
+
+    const result = await TraceEvent.findOneAndUpdate(
+      {
+        product: productId,
+        'details.seed_key': event.key,
+      },
+      {
+        $set: {
+          product: productId,
+          batchId: event.product,
+          eventType: event.eventType,
+          description: event.description,
+          details: {
+            ...event.details,
+            seed_key: event.key,
+            source: 'normalized-demo-data',
+          },
+          images: event.images || [],
+          videos: event.videos || [],
+          recorded_by: createdBy,
+          onChainStatus: 'skipped',
+          dataHashVersion: 'v2',
+        },
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true, runValidators: true }
+    );
+    if (result) traceEventsUpserted += 1;
+  }
+
+  return { traceEventsUpserted };
 }
 
 async function seedOrganizations(createdBy: Types.ObjectId) {
@@ -484,6 +638,7 @@ async function main() {
   const repairedReferences = await normalizeBaseData(fallbackUser._id);
   const organizations = await seedOrganizations(fallbackUser._id);
   await seedSupplyChain(fallbackUser._id, organizations);
+  const traceEventMedia = await seedTraceEventMedia(fallbackUser._id);
   await seedQualityInspections(fallbackUser._id);
   const disease = await seedDiseaseDetections(fallbackUser._id);
   const inventory = await normalizeInventory(fallbackUser._id);
@@ -501,7 +656,7 @@ async function main() {
     inventoryTransactions: await InventoryTransaction.countDocuments(),
   };
 
-  console.log(JSON.stringify({ success: true, repairedReferences, disease, inventory, counts }, null, 2));
+  console.log(JSON.stringify({ success: true, repairedReferences, traceEventMedia, disease, inventory, counts }, null, 2));
 }
 
 main()

@@ -45,6 +45,16 @@ export const updateProduct = async (req: Request, res: Response) => {
   res.status(StatusCodes.OK).json({ product });
 };
 
+export const updateProductStatus = async (req: Request, res: Response) => {
+  const product = await productService.updateProductStatus(
+    req.params.id,
+    req.body,
+    req.user!.userId,
+    req.user!.role
+  );
+  res.status(StatusCodes.OK).json({ product });
+};
+
 export const updateProductCameras = async (req: Request, res: Response) => {
   const product = await productService.updateProductCameras(
     req.params.id,

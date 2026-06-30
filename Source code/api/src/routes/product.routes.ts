@@ -6,6 +6,7 @@ import {
   getTrashProducts,
   createProduct,
   updateProduct,
+  updateProductStatus,
   updateProductCameras,
   deleteProduct,
   restoreProduct,
@@ -38,6 +39,12 @@ router.patch(
   authorize('admin', 'manager', 'farmer'),
   auditUpdate('Product'),
   updateProductCameras
+);
+router.patch(
+  '/:id/status',
+  authorize('admin', 'manager', 'farmer'),
+  auditUpdate('Product'),
+  updateProductStatus
 );
 router.get(
   '/:id/inventory',

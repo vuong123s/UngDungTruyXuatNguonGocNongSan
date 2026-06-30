@@ -10,6 +10,7 @@ export interface ILiveCamera {
 }
 
 export interface IProduct {
+  batch_code?: string;
   name: string;
   category: string;
   type: 'Plant' | 'Animal';
@@ -40,6 +41,14 @@ const productSchema = new Schema<IProduct>(
       required: [true, 'Vui l?ng nh?p t?n s?n ph?m'],
       trim: true,
       maxlength: 200,
+    },
+    batch_code: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      unique: true,
+      sparse: true,
+      index: true,
     },
     category: {
       type: String,

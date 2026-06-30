@@ -432,17 +432,17 @@ class _TimelineViewState extends State<_TimelineView> {
               key: ValueKey(selectedEvent.id),
               event: selectedEvent,
               onRetry: () async {
+                final messenger = ScaffoldMessenger.of(context);
                 final updated = await BatchService().retryBlockchainEvent(
                   selectedEvent!.id,
                 );
-                if (mounted) {
-                  setState(() => _eventOverrides[updated.id] = updated);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Đã ghi lại sự kiện lên blockchain.'),
-                    ),
-                  );
-                }
+                if (!mounted) return;
+                setState(() => _eventOverrides[updated.id] = updated);
+                messenger.showSnackBar(
+                  const SnackBar(
+                    content: Text('Đã ghi lại sự kiện lên blockchain.'),
+                  ),
+                );
               },
             ),
         ],
@@ -927,17 +927,17 @@ class _SelectedTimelineEventDetailState
                   onPressed: _retrying
                       ? null
                       : () async {
+                          final messenger = ScaffoldMessenger.of(context);
                           try {
                             setState(() => _retrying = true);
                             await widget.onRetry();
                           } catch (error) {
-                            if (mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('Ghi lại thất bại: $error'),
-                                ),
-                              );
-                            }
+                            if (!mounted) return;
+                            messenger.showSnackBar(
+                              SnackBar(
+                                content: Text('Ghi lại thất bại: $error'),
+                              ),
+                            );
                           } finally {
                             if (mounted) setState(() => _retrying = false);
                           }
@@ -983,6 +983,8 @@ Color _actionColor(String actionType) {
       return const Color(0xFF6A6EE5);
     case 'SHIPPING':
       return const Color(0xFF366DCE);
+    case 'STATUS_UPDATE':
+      return AppColors.pine;
     default:
       return AppColors.pine;
   }
@@ -1004,6 +1006,8 @@ IconData _iconForAction(String actionType) {
       return Icons.inventory_2_rounded;
     case 'SHIPPING':
       return Icons.local_shipping_rounded;
+    case 'STATUS_UPDATE':
+      return Icons.flag_circle_rounded;
     default:
       return Icons.timeline_rounded;
   }
@@ -1025,6 +1029,8 @@ String _labelForAction(String actionType) {
       return 'Đóng gói';
     case 'SHIPPING':
       return 'Vận chuyển';
+    case 'STATUS_UPDATE':
+      return 'Chuyển trạng thái';
     default:
       return actionType;
   }

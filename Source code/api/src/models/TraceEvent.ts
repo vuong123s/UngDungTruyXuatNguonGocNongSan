@@ -8,6 +8,7 @@ export const ACTION_TYPES = [
   'HARVESTING',
   'PACKAGING',
   'SHIPPING',
+  'STATUS_UPDATE',
 ] as const;
 
 export type ActionType = (typeof ACTION_TYPES)[number];

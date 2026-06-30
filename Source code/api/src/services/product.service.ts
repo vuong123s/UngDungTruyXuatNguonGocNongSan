@@ -15,6 +15,52 @@ const isBlockchainConfigured = () =>
   !!(env.CONTRACT_ADDRESS && env.BLOCKCHAIN_PRIVATE_KEY);
 
 const activeProductQuery = { isDeleted: { $ne: true } };
+const PRODUCT_STATUSES = ['draft', 'active', 'completed', 'recalled'] as const;
+type ProductStatus = (typeof PRODUCT_STATUSES)[number];
+
+const statusLabels: Record<ProductStatus, string> = {
+  draft: 'Bản nháp',
+  active: 'Đang theo dõi',
+  completed: 'Hoàn tất',
+  recalled: 'Thu hồi',
+};
+
+const allowedStatusTransitions: Record<ProductStatus, ProductStatus[]> = {
+  draft: ['active', 'recalled'],
+  active: ['completed', 'recalled'],
+  completed: [],
+  recalled: [],
+};
+
+const privilegedStatusTransitions: Record<ProductStatus, ProductStatus[]> = {
+  draft: ['active', 'recalled'],
+  active: ['completed', 'recalled'],
+  completed: ['active'],
+  recalled: [],
+};
+
+const isProductStatus = (value: unknown): value is ProductStatus =>
+  typeof value === 'string' && PRODUCT_STATUSES.includes(value as ProductStatus);
+
+const makeBatchPrefix = (value: string) => {
+  const normalized = value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '');
+
+  return (normalized || 'LO').slice(0, 4).padEnd(4, 'X');
+};
+
+const generateBatchCode = async (name: string, category: string) => {
+  const year = new Date().getFullYear();
+  const prefix = makeBatchPrefix(category || name);
+  const pattern = new RegExp(`^${prefix}-${year}-`);
+  const count = await Product.countDocuments({ batch_code: pattern });
+  return `${prefix}-${year}-${(count + 1).toString().padStart(4, '0')}`;
+};
 
 const assertFarmingAreaAccess = async (
   farmingAreaId: string | undefined,
@@ -42,7 +88,6 @@ const pickProductUpdate = (
     description: string;
     origin: string;
     cultivation_time: string;
-    status: string;
     farming_area: string;
     live_cameras: ILiveCamera[];
   }>
@@ -54,7 +99,6 @@ const pickProductUpdate = (
     'description',
     'origin',
     'cultivation_time',
-    'status',
     'farming_area',
     'live_cameras',
   ] as const;
@@ -188,8 +232,11 @@ export const createProduct = async (
     throw new BadRequestError('Số lượng tồn không hợp lệ');
   }
 
+  const batchCode = await generateBatchCode(data.name, data.category);
+
   const product = await Product.create({ 
     ...data, 
+    batch_code: batchCode,
     origin: origin || 'Việt Nam',
     initial_quantity: initialQuantity,
     current_quantity: currentQuantity,
@@ -282,7 +329,11 @@ export const updateProduct = async (
     );
   }
 
-  const oldStatus = currentProduct.status;
+  if ('status' in data) {
+    throw new BadRequestError(
+      'Vui lòng dùng chức năng chuyển trạng thái để hệ thống ghi nhận lý do và lịch sử'
+    );
+  }
   
   const safeData = pickProductUpdate(data);
   const product = await Product.findOneAndUpdate({ _id: productId, ...activeProductQuery }, safeData, {
@@ -294,20 +345,89 @@ export const updateProduct = async (
     throw new NotFoundError(`Không tìm thấy sản phẩm ${productId}`);
   }
 
-  // Notify if status has changed
-  if (data.status && data.status !== oldStatus) {
-    notifyProductStatusChanged(
-      product.created_by.toString(),
-      product.name,
-      oldStatus,
-      data.status,
-      productId
-    ).catch((err) => {
-      console.error('Failed to send product status notification:', err.message);
-    });
+  return product;
+};
+
+export const updateProductStatus = async (
+  productId: string,
+  data: {
+    status?: string;
+    reason?: string;
+    note?: string;
+  },
+  userId: string,
+  userRole: string
+) => {
+  const product = await Product.findOne({ _id: productId, ...activeProductQuery });
+  if (!product) {
+    throw new NotFoundError(`Không tìm thấy sản phẩm ${productId}`);
   }
 
-  return product;
+  if (userRole === 'farmer' && product.created_by.toString() !== userId) {
+    throw new UnauthorizedError('Bạn chỉ được đổi trạng thái lô do mình quản lý');
+  }
+
+  if (!isProductStatus(data.status)) {
+    throw new BadRequestError('Trạng thái lô không hợp lệ');
+  }
+
+  const nextStatus = data.status;
+  const currentStatus = product.status as ProductStatus;
+  if (nextStatus === currentStatus) {
+    throw new BadRequestError('Lô đã ở trạng thái này');
+  }
+
+  const isPrivileged = ['admin', 'manager'].includes(userRole);
+  const transitions = isPrivileged
+    ? privilegedStatusTransitions[currentStatus]
+    : allowedStatusTransitions[currentStatus];
+  if (!transitions.includes(nextStatus)) {
+    throw new BadRequestError(
+      `Không thể chuyển trạng thái từ "${statusLabels[currentStatus]}" sang "${statusLabels[nextStatus]}"`
+    );
+  }
+
+  const reason = data.reason?.trim() || '';
+  const note = data.note?.trim() || '';
+  if (!reason) {
+    throw new BadRequestError('Vui lòng nhập lý do chuyển trạng thái');
+  }
+  if (nextStatus === 'recalled' && reason.length < 10) {
+    throw new BadRequestError('Lý do thu hồi cần rõ ràng hơn');
+  }
+
+  product.status = nextStatus;
+  await product.save();
+
+  await TraceEvent.create({
+    product: product._id,
+    batchId: product._id.toString(),
+    eventType: 'STATUS_UPDATE',
+    description: `Chuyển trạng thái từ "${statusLabels[currentStatus]}" sang "${statusLabels[nextStatus]}": ${reason}`,
+    details: {
+      oldStatus: currentStatus,
+      newStatus: nextStatus,
+      reason,
+      note,
+    },
+    images: [],
+    videos: [],
+    recorded_by: userId,
+    onChainStatus: 'skipped',
+    dataHashVersion: 'v2',
+  });
+
+  notifyProductStatusChanged(
+    product.created_by.toString(),
+    product.name,
+    currentStatus,
+    nextStatus,
+    productId
+  ).catch((err) => {
+    console.error('Failed to send product status notification:', err.message);
+  });
+
+  return product.populate('farming_area', 'name address area_size');
 };
 
 export const updateProductCameras = async (

@@ -60,6 +60,7 @@ class BatchEvent {
 class Batch {
   final String id;
   final String batchId;
+  final String batchCode;
   final String productName;
   final String productType;
   final String origin;
@@ -75,6 +76,7 @@ class Batch {
   const Batch({
     required this.id,
     required this.batchId,
+    this.batchCode = '',
     required this.productName,
     required this.productType,
     required this.origin,
@@ -92,6 +94,7 @@ class Batch {
     return Batch(
       id: (json['_id'] ?? '').toString(),
       batchId: (json['batchId'] ?? '').toString(),
+      batchCode: (json['batchCode'] ?? json['batch_code'] ?? '').toString(),
       productName: (json['productName'] ?? '').toString(),
       productType: (json['productType'] ?? '').toString(),
       origin: (json['origin'] ?? '').toString(),

@@ -496,7 +496,9 @@ class _BatchCard extends ConsumerWidget {
                       ),
                     ),
                     const SizedBox(height: 4),
-                    Text('Mã lô: ${batch.batchId}'),
+                    Text(
+                      'Mã lô: ${batch.batchCode.isEmpty ? batch.batchId : batch.batchCode}',
+                    ),
                     if (batch.origin.isNotEmpty) ...[
                       const SizedBox(height: 2),
                       Text('Xuất xứ: ${batch.origin}'),
@@ -652,8 +654,19 @@ class _BatchCard extends ConsumerWidget {
                 note: note,
                 location: location,
                 status: status,
-              ),
+          ),
           'Đã ghi nhận thu hồi lô.',
+        ),
+        onStatusChange: (status, reason, note) => _runWorkflow(
+          context,
+          ref,
+          () => ref.read(batchServiceProvider).updateProductStatus(
+                productId: batch.id,
+                status: status,
+                reason: reason,
+                note: note,
+              ),
+          'Đã chuyển trạng thái lô.',
         ),
       ),
     );
@@ -716,6 +729,8 @@ class _BatchCard extends ConsumerWidget {
         return 'Đóng gói';
       case 'SHIPPING':
         return 'Vận chuyển';
+      case 'STATUS_UPDATE':
+        return 'Chuyển trạng thái';
       default:
         return actionType;
     }
@@ -972,6 +987,7 @@ class _WorkflowSheet extends StatefulWidget {
     required this.onSplit,
     required this.onMerge,
     required this.onRecall,
+    required this.onStatusChange,
   });
 
   final Batch batch;
@@ -995,6 +1011,11 @@ class _WorkflowSheet extends StatefulWidget {
     String location,
     String status,
   ) onRecall;
+  final Future<void> Function(
+    String status,
+    String reason,
+    String note,
+  ) onStatusChange;
 
   @override
   State<_WorkflowSheet> createState() => _WorkflowSheetState();
@@ -1005,6 +1026,7 @@ class _WorkflowSheetState extends State<_WorkflowSheet> {
   bool _submitting = false;
   Batch? _mergeTarget;
   String _recallStatus = 'IN_PROGRESS';
+  late String _targetStatus;
   final _splitQuantity = TextEditingController();
   final _childName = TextEditingController();
   final _childQuantity = TextEditingController();
@@ -1016,12 +1038,16 @@ class _WorkflowSheetState extends State<_WorkflowSheet> {
   final _recallReason = TextEditingController();
   final _recallNote = TextEditingController();
   final _recallLocation = TextEditingController();
+  final _statusReason = TextEditingController();
+  final _statusNote = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     final candidates = widget.allBatches.where((item) => item.id != widget.batch.id);
     _mergeTarget = candidates.isEmpty ? null : candidates.first;
+    final options = _nextStatusOptions();
+    _targetStatus = options.isEmpty ? widget.batch.status : options.first;
   }
 
   @override
@@ -1037,6 +1063,8 @@ class _WorkflowSheetState extends State<_WorkflowSheet> {
     _recallReason.dispose();
     _recallNote.dispose();
     _recallLocation.dispose();
+    _statusReason.dispose();
+    _statusNote.dispose();
     super.dispose();
   }
 
@@ -1064,7 +1092,7 @@ class _WorkflowSheetState extends State<_WorkflowSheet> {
           _parseOptional(_mergeQuantity.text),
           _mergeNote.text,
         );
-      } else {
+      } else if (_mode == 'recall') {
         if (_recallReason.text.trim().isEmpty) {
           throw Exception('Vui lòng nhập lý do thu hồi');
         }
@@ -1074,6 +1102,15 @@ class _WorkflowSheetState extends State<_WorkflowSheet> {
           _recallNote.text,
           _recallLocation.text,
           _recallStatus,
+        );
+      } else {
+        if (_statusReason.text.trim().isEmpty) {
+          throw Exception('Vui lòng nhập lý do chuyển trạng thái');
+        }
+        await widget.onStatusChange(
+          _targetStatus,
+          _statusReason.text,
+          _statusNote.text,
         );
       }
     } catch (error) {
@@ -1168,6 +1205,11 @@ class _WorkflowSheetState extends State<_WorkflowSheet> {
                       icon: Icon(Icons.warning_amber_rounded),
                       label: Text('Thu hồi'),
                     ),
+                    ButtonSegment(
+                      value: 'status',
+                      icon: Icon(Icons.flag_circle_outlined),
+                      label: Text('Trạng thái'),
+                    ),
                   ],
                   selected: {_mode},
                   onSelectionChanged: (value) => setState(() => _mode = value.first),
@@ -1176,6 +1218,7 @@ class _WorkflowSheetState extends State<_WorkflowSheet> {
                 if (_mode == 'split') _buildSplitForm(),
                 if (_mode == 'merge') _buildMergeForm(),
                 if (_mode == 'recall') _buildRecallForm(),
+                if (_mode == 'status') _buildStatusForm(),
                 const SizedBox(height: 18),
                 FilledButton.icon(
                   onPressed: _submitting ? null : _submit,
@@ -1348,6 +1391,85 @@ class _WorkflowSheetState extends State<_WorkflowSheet> {
     );
   }
 
+  Widget _buildStatusForm() {
+    final options = _nextStatusOptions();
+    if (options.isEmpty) {
+      return const Text(
+        'Lô đang ở trạng thái cuối. Chỉ quản trị viên mới có thể xử lý trường hợp đặc biệt.',
+        style: TextStyle(color: AppColors.muted, fontWeight: FontWeight.w700),
+      );
+    }
+
+    if (!options.contains(_targetStatus)) _targetStatus = options.first;
+
+    return Column(
+      children: [
+        DropdownButtonFormField<String>(
+          initialValue: _targetStatus,
+          items: options
+              .map(
+                (status) => DropdownMenuItem(
+                  value: status,
+                  child: Text(_statusLabel(status)),
+                ),
+              )
+              .toList(),
+          onChanged: (value) => setState(() => _targetStatus = value ?? _targetStatus),
+          decoration: const InputDecoration(
+            labelText: 'Trạng thái mới',
+            prefixIcon: Icon(Icons.flag_circle_outlined),
+          ),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _statusReason,
+          minLines: 2,
+          maxLines: 4,
+          decoration: const InputDecoration(
+            labelText: 'Lý do chuyển trạng thái',
+            prefixIcon: Icon(Icons.fact_check_outlined),
+          ),
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: _statusNote,
+          minLines: 2,
+          maxLines: 4,
+          decoration: const InputDecoration(
+            labelText: 'Ghi chú',
+            prefixIcon: Icon(Icons.notes_rounded),
+          ),
+        ),
+      ],
+    );
+  }
+
+  List<String> _nextStatusOptions() {
+    switch (widget.batch.status) {
+      case 'draft':
+        return const ['active', 'recalled'];
+      case 'active':
+        return const ['completed', 'recalled'];
+      default:
+        return const [];
+    }
+  }
+
+  String _statusLabel(String status) {
+    switch (status) {
+      case 'draft':
+        return 'Bản nháp';
+      case 'active':
+        return 'Đang theo dõi';
+      case 'completed':
+        return 'Hoàn tất';
+      case 'recalled':
+        return 'Thu hồi';
+      default:
+        return status;
+    }
+  }
+
   String _formatQuantity(double value) {
     if (value == value.roundToDouble()) return value.toStringAsFixed(0);
     return value.toStringAsFixed(2);
@@ -1392,6 +1514,7 @@ class _StatusPill extends StatelessWidget {
     final color = switch (status) {
       'completed' => const Color(0xFF2E956A),
       'draft' => const Color(0xFFA46A1F),
+      'recalled' => AppColors.danger,
       _ => AppColors.pine,
     };
 
@@ -1399,6 +1522,7 @@ class _StatusPill extends StatelessWidget {
       'completed' => 'HOÀN TẤT',
       'draft' => 'BẢN NHÁP',
       'active' => 'ĐANG THEO DÕI',
+      'recalled' => 'THU HỒI',
       _ => status.toUpperCase(),
     };
 

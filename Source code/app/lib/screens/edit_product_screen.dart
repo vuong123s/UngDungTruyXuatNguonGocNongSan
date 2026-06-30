@@ -19,7 +19,6 @@ class _EditProductScreenState extends ConsumerState<EditProductScreen> {
   late final TextEditingController _category;
   late final TextEditingController _description;
   late final TextEditingController _origin;
-  late String _status;
   bool _saving = false;
   String? _error;
 
@@ -30,7 +29,6 @@ class _EditProductScreenState extends ConsumerState<EditProductScreen> {
     _category = TextEditingController(text: widget.batch.productType);
     _description = TextEditingController(text: widget.batch.description);
     _origin = TextEditingController(text: widget.batch.origin);
-    _status = widget.batch.status;
   }
 
   @override
@@ -57,7 +55,6 @@ class _EditProductScreenState extends ConsumerState<EditProductScreen> {
             category: _category.text,
             description: _description.text,
             origin: _origin.text,
-            status: _status,
           );
       ref.invalidate(batchListProvider);
       if (mounted) {
@@ -131,28 +128,6 @@ class _EditProductScreenState extends ConsumerState<EditProductScreen> {
                       maxLines: 6,
                       decoration: const InputDecoration(labelText: 'Mô tả'),
                       validator: _required,
-                    ),
-                    const SizedBox(height: 12),
-                    DropdownButtonFormField<String>(
-                      value: _status,
-                      decoration: const InputDecoration(
-                        labelText: 'Trạng thái',
-                      ),
-                      items: const [
-                        DropdownMenuItem(
-                          value: 'draft',
-                          child: Text('Bản nháp'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'active',
-                          child: Text('Đang theo dõi'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'completed',
-                          child: Text('Hoàn tất'),
-                        ),
-                      ],
-                      onChanged: (value) => setState(() => _status = value!),
                     ),
                     if (_error != null) ...[
                       const SizedBox(height: 12),

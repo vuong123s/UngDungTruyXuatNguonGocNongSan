@@ -160,6 +160,12 @@ export const createTraceEvent = async (
 
   assertCanManageProduct(product.created_by.toString(), userId, userRole);
 
+  if (eventType === 'STATUS_UPDATE') {
+    throw new BadRequestError(
+      'Vui lòng dùng chức năng chuyển trạng thái lô để ghi nhận sự kiện này.'
+    );
+  }
+
   if (product.status === 'completed') {
     throw new BadRequestError(
       'Lô nông sản đã hoàn thành, không thể thêm nhật ký mới. Vui lòng chuyển trạng thái lô về đang theo dõi nếu cần bổ sung hồ sơ.'

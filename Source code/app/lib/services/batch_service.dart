@@ -65,6 +65,7 @@ class BatchService {
     return Batch(
       id: (product['_id'] ?? batchId).toString(),
       batchId: (product['_id'] ?? batchId).toString(),
+      batchCode: (product['batch_code'] ?? '').toString(),
       productName: (product['name'] ?? '').toString(),
       productType: (product['category'] ?? product['type'] ?? '').toString(),
       origin: (product['origin'] ?? '').toString(),
@@ -233,6 +234,7 @@ class BatchService {
     required String origin,
     required double initialQuantity,
     required String unit,
+    String? farmingArea,
   }) async {
     final response = await _dio.post(
       '/products',
@@ -245,6 +247,8 @@ class BatchService {
         'initial_quantity': initialQuantity,
         'current_quantity': initialQuantity,
         'unit': unit.trim().isEmpty ? 'kg' : unit.trim(),
+        if (farmingArea != null && farmingArea.trim().isNotEmpty)
+          'farming_area': farmingArea.trim(),
       },
     );
     final payload = response.data as Map<String, dynamic>;
@@ -258,7 +262,6 @@ class BatchService {
     required String category,
     required String description,
     required String origin,
-    required String status,
   }) async {
     final response = await _dio.patch(
       '/products/$productId',
@@ -267,7 +270,25 @@ class BatchService {
         'category': category.trim(),
         'description': description.trim(),
         'origin': origin.trim(),
+      },
+    );
+    final payload = response.data as Map<String, dynamic>;
+    final product = payload['product'] as Map<String, dynamic>? ?? const {};
+    return _mapProductToBatch(product);
+  }
+
+  Future<Batch> updateProductStatus({
+    required String productId,
+    required String status,
+    required String reason,
+    String? note,
+  }) async {
+    final response = await _dio.patch(
+      '/products/$productId/status',
+      data: {
         'status': status,
+        'reason': reason.trim(),
+        if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
       },
     );
     final payload = response.data as Map<String, dynamic>;
@@ -343,6 +364,7 @@ class BatchService {
     return Batch(
       id: (product['_id'] ?? '').toString(),
       batchId: (product['_id'] ?? '').toString(),
+      batchCode: (product['batch_code'] ?? '').toString(),
       productName: (product['name'] ?? '').toString(),
       productType: (product['category'] ?? product['type'] ?? '').toString(),
       origin: (product['origin'] ?? '').toString(),
