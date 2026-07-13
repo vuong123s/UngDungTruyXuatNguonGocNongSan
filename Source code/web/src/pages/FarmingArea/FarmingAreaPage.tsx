@@ -109,8 +109,8 @@ const FarmingAreaPage: React.FC = () => {
   };
 
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing[6] }}>
+    <div className="feature-page farming-page">
+      <div className="feature-page-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing[6] }}>
         <div>
           <h1 style={{ margin: 0, fontSize: typography.sizes['2xl'], fontWeight: typography.weights.bold }}>
             Quản lý Vùng trồng
@@ -138,7 +138,7 @@ const FarmingAreaPage: React.FC = () => {
       )}
 
       {showForm && (
-        <div style={{ 
+        <div className="feature-form-card" style={{
           background: colors.surface, border: `1px solid ${colors.neutral[200]}`, 
           borderRadius: borderRadius.xl, padding: spacing[6], marginBottom: spacing[6], boxShadow: shadows.sm 
         }}>

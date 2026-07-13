@@ -2,6 +2,7 @@ export interface User {
   _id: string;
   name: string;
   email: string;
+  avatar?: string;
   role: 'admin' | 'manager' | 'farmer' | 'consumer';
   phone?: string;
   address?: string;
@@ -41,6 +42,7 @@ export interface LiveCamera {
 
 export interface Product {
   _id: string;
+  batch_code?: string;
   name: string;
   description?: string;
   category: string;

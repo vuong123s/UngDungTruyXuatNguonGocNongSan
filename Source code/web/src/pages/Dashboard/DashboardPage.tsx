@@ -1,1463 +1,890 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { productApi } from '../../core/api/product.api';
-import { farmingAreaApi, FarmingArea as FarmingAreaType } from '../../core/api/farmingArea.api';
-import { colors, spacing, borderRadius, shadows, typography } from '../../core/theme';
-import type { Product } from '../../core/types';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { QRCodeSVG } from 'qrcode.react';
 import ProductCameraModal from '../../components/LiveStream/ProductCameraModal';
+import { farmingAreaApi, FarmingArea } from '../../core/api/farmingArea.api';
+import { productApi } from '../../core/api/product.api';
 import { useAuth } from '../../core/hooks/useAuth';
+import type { Product } from '../../core/types';
+import './DashboardPage.css';
 
-// SVG Icons for modern premium UI
-const CubeIcon = ({ color = 'currentColor' }: { color?: string }) => (
-  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke={color} style={{ width: 24, height: 24 }}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="m21 7.5-9-5.25L3 7.5m18 0-9 5.25m9-5.25v9l-9 5.25M3 7.5l9 5.25M3 7.5v9l9 5.25m0-9v9" />
-  </svg>
-);
+type IconName =
+  | 'archive'
+  | 'arrow'
+  | 'camera'
+  | 'chain'
+  | 'check'
+  | 'chevron'
+  | 'close'
+  | 'cube'
+  | 'edit'
+  | 'eye'
+  | 'filter'
+  | 'history'
+  | 'journal'
+  | 'location'
+  | 'plus'
+  | 'qr'
+  | 'refresh'
+  | 'restore'
+  | 'search'
+  | 'shield'
+  | 'trash'
+  | 'upload'
+  | 'warning';
 
-const ActivityIcon = ({ color = 'currentColor' }: { color?: string }) => (
-  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke={color} style={{ width: 24, height: 24 }}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v5.625C7.5 19.376 6.996 19.875 6.375 19.875h-2.25A1.125 1.125 0 0 1 3 18.75v-5.625ZM18 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v10.125c0 .621-.504 1.125-1.125 1.125h-2.25A1.125 1.125 0 0 1 18 18.75V8.625ZM10.5 13.125c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v5.625c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 0 1-1.125-1.125v-5.625Z" />
-    <path strokeLinecap="round" strokeLinejoin="round" d="M9 10.5V9.75a3 3 0 0 0-3-3h-.75M21 3v2.25m0 0H18.75M21 5.25 16.5 9.75" />
-  </svg>
-);
+const Icon: React.FC<{ name: IconName; size?: number }> = ({ name, size = 20 }) => {
+  const paths: Record<IconName, React.ReactNode> = {
+    archive: <><path d="M4 7h16v13H4z"/><path d="M3 4h18v3H3zM9 11h6"/></>,
+    arrow: <><path d="M5 12h14M13 6l6 6-6 6"/></>,
+    camera: <><path d="M4 8h3l2-3h6l2 3h3v11H4z"/><circle cx="12" cy="13" r="3.5"/></>,
+    chain: <><path d="m9 15-2 2a3.5 3.5 0 0 1-5-5l3-3a3.5 3.5 0 0 1 5 0"/><path d="m15 9 2-2a3.5 3.5 0 1 1 5 5l-3 3a3.5 3.5 0 0 1-5 0M8 16l8-8"/></>,
+    check: <><circle cx="12" cy="12" r="9"/><path d="m8 12 2.7 2.7L16.5 9"/></>,
+    chevron: <path d="m9 18 6-6-6-6"/>,
+    close: <path d="M6 6l12 12M18 6 6 18"/>,
+    cube: <><path d="m12 3 8 4.5v9L12 21l-8-4.5v-9z"/><path d="m4 7.5 8 4.5 8-4.5M12 12v9"/></>,
+    edit: <><path d="M4 20h4l11-11-4-4L4 16z"/><path d="m13.5 6.5 4 4"/></>,
+    eye: <><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.5"/></>,
+    filter: <path d="M4 5h16l-6 7v6l-4 2v-8z"/>,
+    history: <><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5M12 7v5l3 2"/></>,
+    journal: <><path d="M5 3h14v18H5zM8 7h8M8 11h8M8 15h5"/></>,
+    location: <><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/></>,
+    plus: <path d="M12 5v14M5 12h14"/>,
+    qr: <><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h2v2h-2zM18 14h2v6h-4v-2M12 12h3"/></>,
+    refresh: <><path d="M20 7v5h-5M4 17v-5h5"/><path d="M6.1 8a7 7 0 0 1 11.4-2L20 8M4 16l2.5 2A7 7 0 0 0 18 16"/></>,
+    restore: <><path d="M4 9V4m0 0h5M4 4l4 4"/><path d="M5.5 14a7 7 0 1 0 2-7"/></>,
+    search: <><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 5 5"/></>,
+    shield: <><path d="m12 3 8 3v5c0 5-3.4 8.2-8 10-4.6-1.8-8-5-8-10V6z"/><path d="m8.5 12 2.2 2.2 4.8-5"/></>,
+    trash: <><path d="M4 7h16M9 7V4h6v3M7 7l1 14h8l1-14M10 11v6M14 11v6"/></>,
+    upload: <><path d="M12 16V4m0 0L7 9m5-5 5 5"/><path d="M4 15v5h16v-5"/></>,
+    warning: <><path d="M12 3 2.5 20h19z"/><path d="M12 9v5M12 17h.01"/></>,
+  };
 
-const CheckBadgeIcon = ({ color = 'currentColor' }: { color?: string }) => (
-  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke={color} style={{ width: 24, height: 24 }}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75 11.25 15 15 9.75M21 12c0 1.268-.63 2.39-1.593 3.068a3.745 3.745 0 0 1-1.043 3.296 3.745 3.745 0 0 1-3.296 1.043A3.745 3.745 0 0 1 12 21c-1.268 0-2.39-.63-3.068-1.593a3.746 3.746 0 0 1-3.296-1.043 3.745 3.745 0 0 1-1.043-3.296A3.745 3.745 0 0 1 3 12c0-1.268.63-2.39 1.593-3.068a3.745 3.745 0 0 1 1.043-3.296 3.746 3.746 0 0 1 3.296-1.043A3.746 3.746 0 0 1 12 3c1.268 0 2.39.63 3.068 1.593a3.746 3.746 0 0 1 3.296 1.043 3.746 3.746 0 0 1 1.043 3.296A3.745 3.745 0 0 1 21 12Z" />
-  </svg>
-);
-
-const EyeIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.2} stroke="currentColor" style={{ width: 14, height: 14 }}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 0 1 0-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" />
-    <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" />
-  </svg>
-);
-
-const PlusCircleIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.2} stroke="currentColor" style={{ width: 14, height: 14 }}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v6m3-3H9m12 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z" />
-  </svg>
-);
-
-const CameraIcon = () => (
-  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.2} stroke="currentColor" style={{ width: 14, height: 14 }}>
-    <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 0 1 5.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 0 0 2.25 2.25h15A2.25 2.25 0 0 0 21.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 0 0-1.134-.175 2.31 2.31 0 0 1-1.64-1.055l-.822-1.316a2.192 2.192 0 0 0-1.736-1.039 48.774 48.774 0 0 0-5.232 0 2.192 2.192 0 0 0-1.736 1.039l-.821 1.316Z" />
-    <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0ZM18.75 10.5h.008v.008h-.008V10.5Z" />
-  </svg>
-);
-
-type ProductionType = 'Plant' | 'Animal';
-type CategoryStore = Record<ProductionType, string[]>;
-
-const CATEGORY_STORAGE_KEY = 'agri-trace-category-options-v1';
-
-const statusLabel: Record<string, string> = {
-  draft: 'Nháp',
-  active: 'Đang theo dõi',
-  completed: 'Hoàn tất',
-  recalled: 'Đã thu hồi',
-};
-
-const statusColors: Record<string, { bg: string; text: string }> = {
-  draft: { bg: colors.neutral[100], text: colors.neutral[600] },
-  active: { bg: colors.primary[100], text: colors.primary[700] },
-  completed: { bg: '#dbeafe', text: '#1d4ed8' },
-  recalled: { bg: '#fee2e2', text: '#b91c1c' },
-};
-
-const productionTypeMeta: Record<
-  ProductionType,
-  { label: string; subtitle: string; startLabel: string; placeholder: string; icon: string }
-> = {
-  Plant: {
-    label: 'Trồng trọt',
-    subtitle: 'Dùng cho rau, củ, quả, nấm, ngũ cốc...',
-    startLabel: 'Ngày bắt đầu gieo trồng',
-    placeholder: 'Ví dụ: Xà lách lứa tháng 3',
-    icon: '🌱',
-  },
-  Animal: {
-    label: 'Chăn nuôi',
-    subtitle: 'Dùng cho gia súc, gia cầm, thủy sản...',
-    startLabel: 'Ngày bắt đầu nuôi / nhập đàn',
-    placeholder: 'Ví dụ: Gà ta lứa tháng 3',
-    icon: '🐔',
-  },
-};
-
-const defaultCategoryOptions: CategoryStore = {
-  Plant: ['Rau ăn lá', 'Rau củ', 'Trái cây', 'Ngũ cốc', 'Nấm', 'Khác'],
-  Animal: ['Gia cầm', 'Gia súc', 'Thủy sản', 'Sữa / Trứng', 'Mật ong', 'Khác'],
-};
-
-const StatCard: React.FC<{
-  label: string;
-  value: string | number;
-  color?: string;
-  icon: React.ReactNode;
-  borderAccent?: string;
-}> = ({ label, value, color = colors.textPrimary, icon, borderAccent }) => {
-  const [hovered, setHovered] = useState(false);
   return (
-    <div
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      style={{
-        background: colors.surface,
-        borderRadius: borderRadius.xl,
-        padding: `${spacing[5]} ${spacing[6]}`,
-        boxShadow: hovered ? shadows.md : shadows.sm,
-        border: `1px solid ${colors.neutral[200]}`,
-        borderLeft: borderAccent ? `4px solid ${borderAccent}` : `1px solid ${colors.neutral[200]}`,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-        transform: hovered ? 'translateY(-4px)' : 'translateY(0)',
-      }}
+    <svg
+      className="dash-icon"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
     >
-      <div>
-        <p style={{ margin: 0, fontSize: typography.sizes.xs, fontWeight: typography.weights.semibold, color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: spacing[1] }}>{label}</p>
-        <p style={{ margin: 0, fontSize: typography.sizes['3xl'], fontWeight: typography.weights.bold, color }}>{value}</p>
-      </div>
-      <div style={{
-        padding: spacing[3],
-        borderRadius: borderRadius.lg,
-        background: borderAccent ? `${borderAccent}10` : `${colors.neutral[100]}`,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-      }}>
-        {icon}
-      </div>
-    </div>
+      {paths[name]}
+    </svg>
   );
 };
 
-const fieldStyle: React.CSSProperties = {
-  padding: `${spacing[3]} ${spacing[4]}`,
-  borderRadius: borderRadius.lg,
-  border: `1px solid ${colors.neutral[300]}`,
-  fontSize: typography.sizes.base,
-  width: '100%',
-  boxSizing: 'border-box',
-  outline: 'none',
-  transition: 'border-color 0.2s ease',
+type ProductStatus = Product['status'];
+type Notice = { type: 'success' | 'error' | 'info'; message: string } | null;
+type ConfirmAction = { kind: 'archive' | 'permanent'; product: Product } | null;
+
+interface ProductFormState {
+  type: Product['type'];
+  name: string;
+  category: string;
+  farmingAreaId: string;
+  origin: string;
+  cultivationTime: string;
+  initialQuantity: string;
+  unit: string;
+  description: string;
+  status: ProductStatus;
+  newImages: File[];
+  existingImages: Array<{ path: string; filename: string }>;
+}
+
+const emptyForm = (): ProductFormState => ({
+  type: 'Plant',
+  name: '',
+  category: '',
+  farmingAreaId: '',
+  origin: '',
+  cultivationTime: '',
+  initialQuantity: '',
+  unit: 'kg',
+  description: '',
+  status: 'active',
+  newImages: [],
+  existingImages: [],
+});
+
+const statusMeta: Record<ProductStatus, { label: string; tone: string }> = {
+  draft: { label: 'Bản nháp', tone: 'neutral' },
+  active: { label: 'Đang theo dõi', tone: 'green' },
+  completed: { label: 'Đã hoàn thành', tone: 'blue' },
+  recalled: { label: 'Đã thu hồi', tone: 'red' },
 };
 
-const secondaryButtonStyle: React.CSSProperties = {
-  border: `1px solid ${colors.neutral[300]}`,
-  background: colors.surface,
-  color: colors.textSecondary,
-  borderRadius: borderRadius.lg,
-  padding: `${spacing[3]} ${spacing[4]}`,
-  cursor: 'pointer',
-  fontWeight: typography.weights.medium,
-  fontSize: typography.sizes.sm,
-  transition: 'all 0.2s ease',
-};
-
-const ghostButtonStyle: React.CSSProperties = {
-  border: 'none',
-  background: 'transparent',
-  color: colors.primary[600],
-  borderRadius: borderRadius.md,
-  padding: `${spacing[2]} ${spacing[3]}`,
-  cursor: 'pointer',
-  fontWeight: typography.weights.medium,
-  fontSize: typography.sizes.sm,
-};
-
-const thStyle: React.CSSProperties = {
-  padding: `${spacing[3]} ${spacing[4]}`,
-  textAlign: 'left',
-  fontWeight: typography.weights.semibold,
-  color: colors.textSecondary,
-  fontSize: typography.sizes.sm,
-  borderBottom: `1px solid ${colors.neutral[200]}`,
-};
-
-const tdStyle: React.CSSProperties = {
-  padding: `${spacing[4]} ${spacing[4]}`,
-  borderBottom: `1px solid ${colors.neutral[100]}`,
-  fontSize: typography.sizes.sm,
-};
-
-const normalizeGroupName = (value: string) => value.trim().replace(/\s+/g, ' ');
-
-const loadCategoryOptions = (): CategoryStore => {
-  if (typeof window === 'undefined') {
-    return defaultCategoryOptions;
+const getErrorMessage = (error: unknown, fallback: string) => {
+  if (typeof error === 'object' && error && 'message' in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === 'string' && message.trim()) return message;
   }
-
-  try {
-    const raw = window.localStorage.getItem(CATEGORY_STORAGE_KEY);
-    if (!raw) return defaultCategoryOptions;
-
-    const parsed = JSON.parse(raw) as Partial<CategoryStore>;
-
-    return {
-      Plant:
-        parsed.Plant?.map(normalizeGroupName).filter(Boolean) ?? defaultCategoryOptions.Plant,
-      Animal:
-        parsed.Animal?.map(normalizeGroupName).filter(Boolean) ?? defaultCategoryOptions.Animal,
-    };
-  } catch {
-    return defaultCategoryOptions;
-  }
+  return fallback;
 };
 
 const formatDate = (value?: string) => {
   if (!value) return 'Chưa cập nhật';
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString('vi-VN');
+  return Number.isNaN(date.getTime()) ? value : date.toLocaleDateString('vi-VN');
+};
+
+const formatNumber = (value?: number) =>
+  typeof value === 'number' ? value.toLocaleString('vi-VN') : '0';
+
+const getArea = (product: Product) => {
+  if (!product.farming_area) return null;
+  return typeof product.farming_area === 'string'
+    ? null
+    : product.farming_area;
+};
+
+const getAreaId = (product: Product) => {
+  if (!product.farming_area) return '';
+  return typeof product.farming_area === 'string'
+    ? product.farming_area
+    : product.farming_area._id;
+};
+
+const getImageUrl = (product: Product) => {
+  const path = product.images?.[0]?.path;
+  if (!path) return '';
+  if (/^(https?:)?\/\//i.test(path) || path.startsWith('data:')) return path;
+  return path.startsWith('/') ? path : `/${path}`;
+};
+
+const getInventoryPercent = (product: Product) => {
+  const initial = product.initial_quantity ?? 0;
+  if (initial <= 0) return null;
+  return Math.max(0, Math.min(100, Math.round(((product.current_quantity ?? 0) / initial) * 100)));
+};
+
+const isSameDay = (value: string | undefined, date: Date) => {
+  if (!value) return false;
+  const candidate = new Date(value);
+  return (
+    candidate.getFullYear() === date.getFullYear() &&
+    candidate.getMonth() === date.getMonth() &&
+    candidate.getDate() === date.getDate()
+  );
+};
+
+const StatCard: React.FC<{
+  icon: IconName;
+  label: string;
+  value: number;
+  helper: string;
+  tone?: 'green' | 'blue' | 'amber';
+}> = ({ icon, label, value, helper, tone = 'green' }) => (
+  <article className={`dash-stat dash-stat--${tone}`}>
+    <span className="dash-stat__icon"><Icon name={icon} size={23} /></span>
+    <div className="dash-stat__content">
+      <p>{label}</p>
+      <strong>{value.toLocaleString('vi-VN')}</strong>
+      <small>{helper}</small>
+    </div>
+  </article>
+);
+
+const StatusBadge: React.FC<{ status: ProductStatus }> = ({ status }) => (
+  <span className={`dash-badge dash-badge--${statusMeta[status].tone}`}>
+    <i />{statusMeta[status].label}
+  </span>
+);
+
+const ProductThumb: React.FC<{ product: Product }> = ({ product }) => {
+  const image = getImageUrl(product);
+  return image ? (
+    <img className="dash-product-thumb" src={image} alt="" loading="lazy" />
+  ) : (
+    <span className="dash-product-thumb dash-product-thumb--empty" aria-hidden="true">
+      <Icon name="cube" size={22} />
+    </span>
+  );
+};
+
+interface ProductActionsProps {
+  product: Product;
+  canArchive: boolean;
+  onEdit: (product: Product) => void;
+  onQr: (product: Product) => void;
+  onCamera: (product: Product) => void;
+  onArchive: (product: Product) => void;
+}
+
+const ProductActions: React.FC<ProductActionsProps> = ({
+  product,
+  canArchive,
+  onEdit,
+  onQr,
+  onCamera,
+  onArchive,
+}) => (
+  <div className="dash-row-actions">
+    <Link className="dash-icon-button" to={`/trace/${product._id}`} title="Xem truy xuất" aria-label={`Xem truy xuất ${product.name}`}>
+      <Icon name="eye" size={17} />
+    </Link>
+    <button className="dash-icon-button" type="button" onClick={() => onQr(product)} title="Mã QR" aria-label={`Mở mã QR ${product.name}`}>
+      <Icon name="qr" size={17} />
+    </button>
+    <Link className="dash-icon-button" to={`/add-event?product=${product._id}`} title="Ghi nhật ký" aria-label={`Ghi nhật ký ${product.name}`}>
+      <Icon name="journal" size={17} />
+    </Link>
+    <button className="dash-icon-button" type="button" onClick={() => onCamera(product)} title="Camera" aria-label={`Quản lý camera ${product.name}`}>
+      <Icon name="camera" size={17} />
+    </button>
+    <button className="dash-icon-button" type="button" onClick={() => onEdit(product)} title="Chỉnh sửa" aria-label={`Chỉnh sửa ${product.name}`}>
+      <Icon name="edit" size={17} />
+    </button>
+    {canArchive && (
+      <button className="dash-icon-button dash-icon-button--danger" type="button" onClick={() => onArchive(product)} title="Lưu trữ" aria-label={`Lưu trữ ${product.name}`}>
+        <Icon name="archive" size={17} />
+      </button>
+    )}
+  </div>
+);
+
+interface ProductListProps extends ProductActionsProps {
+  products: Product[];
+  startIndex: number;
+}
+
+const ProductList: React.FC<Omit<ProductListProps, 'product'>> = ({
+  products,
+  startIndex,
+  canArchive,
+  onEdit,
+  onQr,
+  onCamera,
+  onArchive,
+}) => {
+  if (!products.length) {
+    return (
+      <div className="dash-empty">
+        <span><Icon name="search" size={28} /></span>
+        <strong>Không tìm thấy lô phù hợp</strong>
+        <p>Hãy thử đổi từ khóa hoặc bỏ bớt bộ lọc.</p>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="dash-table-wrap">
+        <table className="dash-table">
+          <caption className="sr-only">Danh sách lô nông sản gần đây</caption>
+          <thead>
+            <tr>
+              <th scope="col">Sản phẩm</th>
+              <th scope="col">Mã lô</th>
+              <th scope="col">Vùng sản xuất</th>
+              <th scope="col">Trạng thái</th>
+              <th scope="col">Tồn kho</th>
+              <th scope="col">Blockchain</th>
+              <th scope="col"><span className="sr-only">Thao tác</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            {products.map((product) => {
+              const inventory = getInventoryPercent(product);
+              const area = getArea(product);
+              return (
+                <tr key={product._id}>
+                  <td>
+                    <div className="dash-product-cell">
+                      <ProductThumb product={product} />
+                      <div>
+                        <Link to={`/trace/${product._id}`}>{product.name}</Link>
+                        <span>{product.category || product.type}</span>
+                      </div>
+                    </div>
+                  </td>
+                  <td><strong className="dash-code">{product.batch_code || product._id.slice(-8).toUpperCase()}</strong><small>{formatDate(product.createdAt)}</small></td>
+                  <td><span className="dash-area"><Icon name="location" size={15} />{area?.name || product.origin || 'Chưa gán vùng'}</span></td>
+                  <td><StatusBadge status={product.status} /></td>
+                  <td>
+                    <div className="dash-inventory">
+                      <span>{formatNumber(product.current_quantity)} {product.unit || 'kg'}</span>
+                      {inventory !== null && <i><b style={{ width: `${inventory}%` }} /></i>}
+                    </div>
+                  </td>
+                  <td>
+                    <span className={`dash-chain-state ${product.onChainBatchId ? 'is-verified' : ''}`}>
+                      <Icon name={product.onChainBatchId ? 'check' : 'history'} size={16} />
+                      {product.onChainBatchId ? 'Đã xác thực' : 'Chờ đồng bộ'}
+                    </span>
+                  </td>
+                  <td>
+                    <ProductActions
+                      product={product}
+                      canArchive={canArchive}
+                      onEdit={onEdit}
+                      onQr={onQr}
+                      onCamera={onCamera}
+                      onArchive={onArchive}
+                    />
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="dash-mobile-list">
+        {products.map((product, index) => {
+          const area = getArea(product);
+          return (
+            <article className="dash-mobile-product" key={product._id}>
+              <div className="dash-mobile-product__top">
+                <ProductThumb product={product} />
+                <div>
+                  <small>#{startIndex + index + 1} · {product.batch_code || product._id.slice(-8).toUpperCase()}</small>
+                  <Link to={`/trace/${product._id}`}>{product.name}</Link>
+                  <span>{product.category}</span>
+                </div>
+                <StatusBadge status={product.status} />
+              </div>
+              <div className="dash-mobile-product__meta">
+                <span><Icon name="location" size={15} />{area?.name || product.origin || 'Chưa gán vùng'}</span>
+                <span><Icon name="cube" size={15} />{formatNumber(product.current_quantity)} {product.unit || 'kg'}</span>
+                <span className={product.onChainBatchId ? 'is-verified' : ''}><Icon name="chain" size={15} />{product.onChainBatchId ? 'Đã xác thực' : 'Chờ đồng bộ'}</span>
+              </div>
+              <ProductActions product={product} canArchive={canArchive} onEdit={onEdit} onQr={onQr} onCamera={onCamera} onArchive={onArchive} />
+            </article>
+          );
+        })}
+      </div>
+    </>
+  );
+};
+
+const ActivityChart: React.FC<{ products: Product[] }> = ({ products }) => {
+  const data = useMemo(() => {
+    return Array.from({ length: 7 }, (_, index) => {
+      const date = new Date();
+      date.setHours(0, 0, 0, 0);
+      date.setDate(date.getDate() - (6 - index));
+      const created = products.filter((product) => isSameDay(product.createdAt, date)).length;
+      const updated = products.filter(
+        (product) => !isSameDay(product.createdAt, date) && isSameDay(product.updatedAt, date)
+      ).length;
+      return {
+        label: date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' }),
+        value: created + updated,
+      };
+    });
+  }, [products]);
+
+  const maxValue = Math.max(1, ...data.map((item) => item.value));
+  const points = data.map((item, index) => ({
+    ...item,
+    x: 38 + index * 103,
+    y: 154 - (item.value / maxValue) * 112,
+  }));
+  const line = points.map((point) => `${point.x},${point.y}`).join(' ');
+  const area = `38,154 ${line} 656,154`;
+
+  return (
+    <section className="dash-panel dash-chart-card">
+      <div className="dash-panel__header">
+        <div><p className="dash-eyebrow">7 ngày gần nhất</p><h2>Hoạt động truy xuất</h2></div>
+        <span className="dash-live-label"><i /> Dữ liệu trực tiếp</span>
+      </div>
+      <div className="dash-chart" role="img" aria-label={`Biểu đồ hoạt động 7 ngày: ${data.map((item) => `${item.label} có ${item.value}`).join(', ')}`}>
+        <svg viewBox="0 0 694 205" preserveAspectRatio="none" aria-hidden="true">
+          <defs>
+            <linearGradient id="dash-chart-fill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stopColor="#28a765" stopOpacity=".24" />
+              <stop offset="1" stopColor="#28a765" stopOpacity=".01" />
+            </linearGradient>
+          </defs>
+          <path className="dash-chart__grid" d="M38 42H656M38 98H656M38 154H656" />
+          <polygon points={area} fill="url(#dash-chart-fill)" />
+          <polyline points={line} className="dash-chart__line" />
+          {points.map((point) => <circle key={point.label} cx={point.x} cy={point.y} r="4.5" className="dash-chart__dot" />)}
+        </svg>
+        <div className="dash-chart__labels">
+          {data.map((item) => <span key={item.label}>{item.label}</span>)}
+        </div>
+      </div>
+      <p className="dash-chart__note">Bao gồm lô được tạo mới và lô có cập nhật trong ngày.</p>
+    </section>
+  );
+};
+
+type JourneyState = 'done' | 'current' | 'waiting' | 'warning';
+
+const JourneyCard: React.FC<{ product?: Product }> = ({ product }) => {
+  const stages: Array<{ label: string; description: string; state: JourneyState }> = product
+    ? [
+        { label: 'Khởi tạo lô', description: formatDate(product.createdAt), state: 'done' },
+        { label: product.type === 'Plant' ? 'Canh tác' : 'Chăn nuôi', description: product.status === 'draft' ? 'Chưa bắt đầu' : 'Đang ghi nhận', state: product.status === 'draft' ? 'current' : 'done' },
+        { label: 'Thu hoạch & đóng gói', description: product.status === 'completed' ? 'Đã hoàn tất' : 'Chờ cập nhật', state: product.status === 'completed' ? 'done' : product.status === 'active' ? 'current' : 'waiting' },
+        { label: 'Xác thực blockchain', description: product.onChainBatchId ? 'Đã lưu trên chuỗi' : 'Chưa đồng bộ', state: product.onChainBatchId ? 'done' : 'waiting' },
+        { label: product.status === 'recalled' ? 'Thu hồi' : 'Phân phối', description: product.status === 'recalled' ? 'Lô đang được thu hồi' : 'Theo dõi hành trình', state: product.status === 'recalled' ? 'warning' : product.status === 'completed' ? 'current' : 'waiting' },
+      ]
+    : [];
+
+  return (
+    <section className="dash-panel dash-journey-card">
+      <div className="dash-panel__header">
+        <div><p className="dash-eyebrow">Lô cập nhật gần nhất</p><h2>Hành trình chuỗi cung ứng</h2></div>
+        {product && <Link to={`/trace/${product._id}`}>Chi tiết <Icon name="arrow" size={15} /></Link>}
+      </div>
+      {!product ? (
+        <div className="dash-compact-empty">Chưa có lô để hiển thị hành trình.</div>
+      ) : (
+        <>
+          <div className="dash-journey-product">
+            <ProductThumb product={product} />
+            <div><strong>{product.name}</strong><span>{product.batch_code || product._id.slice(-8).toUpperCase()}</span></div>
+            <StatusBadge status={product.status} />
+          </div>
+          <ol className="dash-timeline">
+            {stages.map((stage, index) => (
+              <li className={`is-${stage.state}`} key={stage.label}>
+                <span className="dash-timeline__marker">{stage.state === 'done' ? <Icon name="check" size={17} /> : index + 1}</span>
+                <div><strong>{stage.label}</strong><small>{stage.description}</small></div>
+              </li>
+            ))}
+          </ol>
+        </>
+      )}
+    </section>
+  );
+};
+
+interface AlertItem {
+  id: string;
+  tone: 'danger' | 'warning' | 'info';
+  count: number;
+  title: string;
+  detail: string;
+}
+
+const AlertsCard: React.FC<{ products: Product[] }> = ({ products }) => {
+  const alerts = useMemo<AlertItem[]>(() => {
+    const recalled = products.filter((product) => product.status === 'recalled').length;
+    const lowStock = products.filter((product) => {
+      const percent = getInventoryPercent(product);
+      return percent !== null && percent <= 20 && product.status === 'active';
+    }).length;
+    const missingChain = products.filter((product) => !product.onChainBatchId && product.status !== 'draft').length;
+    const missingArea = products.filter((product) => !getAreaId(product)).length;
+    return [
+      recalled ? { id: 'recalled', tone: 'danger', count: recalled, title: 'Lô đang thu hồi', detail: 'Cần theo dõi tiến độ và tồn kho liên quan.' } : null,
+      lowStock ? { id: 'low-stock', tone: 'warning', count: lowStock, title: 'Lô sắp hết tồn kho', detail: 'Tồn kho còn tối đa 20% số lượng ban đầu.' } : null,
+      missingChain ? { id: 'chain', tone: 'info', count: missingChain, title: 'Lô chưa xác thực blockchain', detail: 'Kiểm tra kết nối và nhật ký đồng bộ.' } : null,
+      missingArea ? { id: 'area', tone: 'warning', count: missingArea, title: 'Lô chưa gán vùng sản xuất', detail: 'Bổ sung vùng để hồ sơ truy xuất đầy đủ.' } : null,
+    ].filter((item): item is AlertItem => Boolean(item));
+  }, [products]);
+
+  return (
+    <section className="dash-panel dash-alerts-card">
+      <div className="dash-panel__header">
+        <div><p className="dash-eyebrow">Tự động từ dữ liệu lô</p><h2>Cảnh báo cần xử lý</h2></div>
+        <span className="dash-alert-count">{alerts.length}</span>
+      </div>
+      {!alerts.length ? (
+        <div className="dash-all-clear"><span><Icon name="shield" size={24} /></span><div><strong>Mọi thứ đang ổn</strong><small>Không phát hiện vấn đề từ dữ liệu hiện tại.</small></div></div>
+      ) : (
+        <div className="dash-alert-list">
+          {alerts.map((alert) => (
+            <div className={`dash-alert dash-alert--${alert.tone}`} key={alert.id}>
+              <span className="dash-alert__icon"><Icon name="warning" size={19} /></span>
+              <div><strong><b>{alert.count}</b> {alert.title}</strong><small>{alert.detail}</small></div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+};
+
+const BlockchainCard: React.FC<{ total: number; verified: number }> = ({ total, verified }) => {
+  const percentage = total ? Math.round((verified / total) * 100) : 0;
+  const style = { '--dash-progress': `${percentage * 3.6}deg` } as React.CSSProperties;
+  return (
+    <section className="dash-panel dash-blockchain-card">
+      <div className="dash-panel__header"><div><p className="dash-eyebrow">Trạng thái hệ thống</p><h2>Xác thực blockchain</h2></div><Icon name="chain" size={22} /></div>
+      <div className="dash-blockchain-card__body">
+        <div className="dash-donut" style={style}><span><strong>{percentage}%</strong><small>đã xác thực</small></span></div>
+        <dl>
+          <div><dt>Tổng số lô</dt><dd>{total}</dd></div>
+          <div><dt>Đã lưu trên chuỗi</dt><dd>{verified}</dd></div>
+          <div><dt>Chờ đồng bộ</dt><dd>{Math.max(0, total - verified)}</dd></div>
+        </dl>
+      </div>
+      <p className={`dash-network ${total === verified && total > 0 ? 'is-good' : ''}`}><i />{total === verified && total > 0 ? 'Tất cả lô đã được xác thực' : 'Còn dữ liệu cần được đồng bộ'}</p>
+    </section>
+  );
+};
+
+interface ModalShellProps {
+  title: string;
+  description?: string;
+  size?: 'small' | 'large';
+  onClose: () => void;
+  children: React.ReactNode;
+}
+
+const ModalShell: React.FC<ModalShellProps> = ({ title, description, size = 'large', onClose, children }) => {
+  useEffect(() => {
+    const handleKey = (event: KeyboardEvent) => event.key === 'Escape' && onClose();
+    document.addEventListener('keydown', handleKey);
+    return () => document.removeEventListener('keydown', handleKey);
+  }, [onClose]);
+
+  return (
+    <div className="dash-modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}>
+      <section className={`dash-modal dash-modal--${size}`} role="dialog" aria-modal="true" aria-labelledby="dash-modal-title">
+        <div className="dash-modal__header">
+          <div><h2 id="dash-modal-title">{title}</h2>{description && <p>{description}</p>}</div>
+          <button className="dash-icon-button" type="button" onClick={onClose} aria-label="Đóng"><Icon name="close" /></button>
+        </div>
+        {children}
+      </section>
+    </div>
+  );
+};
+
+interface ProductFormModalProps {
+  editing: Product | null;
+  form: ProductFormState;
+  setForm: React.Dispatch<React.SetStateAction<ProductFormState>>;
+  areas: FarmingArea[];
+  categories: string[];
+  submitting: boolean;
+  error: string;
+  onClose: () => void;
+  onSubmit: (event: React.FormEvent) => void;
+}
+
+const ProductFormModal: React.FC<ProductFormModalProps> = ({ editing, form, setForm, areas, categories, submitting, error, onClose, onSubmit }) => {
+  const update = <K extends keyof ProductFormState>(key: K, value: ProductFormState[K]) => setForm((current) => ({ ...current, [key]: value }));
+  const handleFiles = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = Array.from(event.target.files || []).filter((file) => file.type.startsWith('image/')).slice(0, Math.max(0, 5 - form.existingImages.length));
+    update('newImages', selected);
+  };
+  const handleArea = (id: string) => {
+    const area = areas.find((item) => item._id === id);
+    setForm((current) => ({ ...current, farmingAreaId: id, origin: area?.address || current.origin }));
+  };
+
+  return (
+    <ModalShell title={editing ? 'Chỉnh sửa lô nông sản' : 'Tạo lô nông sản mới'} description="Thông tin rõ ràng giúp hồ sơ truy xuất đáng tin cậy hơn." onClose={onClose}>
+      <form className="dash-product-form" onSubmit={onSubmit}>
+        {error && <div className="dash-form-message dash-form-message--error" role="alert">{error}</div>}
+        <fieldset className="dash-type-picker">
+          <legend>Mô hình sản xuất</legend>
+          <label className={form.type === 'Plant' ? 'is-selected' : ''}><input type="radio" checked={form.type === 'Plant'} onChange={() => update('type', 'Plant')} /><span>🌱</span><div><strong>Trồng trọt</strong><small>Rau, củ, quả, ngũ cốc...</small></div></label>
+          <label className={form.type === 'Animal' ? 'is-selected' : ''}><input type="radio" checked={form.type === 'Animal'} onChange={() => update('type', 'Animal')} /><span>🐄</span><div><strong>Chăn nuôi</strong><small>Gia súc, gia cầm, thủy sản...</small></div></label>
+        </fieldset>
+        <div className="dash-form-grid">
+          <label className="dash-field dash-field--wide"><span>Tên lô <b>*</b></span><input autoFocus required value={form.name} onChange={(event) => update('name', event.target.value)} placeholder="Ví dụ: Xoài cát lứa tháng 6" /></label>
+          <label className="dash-field"><span>Nhóm sản phẩm <b>*</b></span><input required list="dash-category-options" value={form.category} onChange={(event) => update('category', event.target.value)} placeholder="Chọn hoặc nhập nhóm" /><datalist id="dash-category-options">{categories.map((category) => <option value={category} key={category} />)}</datalist></label>
+          <label className="dash-field"><span>Trạng thái</span><select value={form.status} disabled={!editing} onChange={(event) => update('status', event.target.value as ProductStatus)}>{Object.entries(statusMeta).map(([value, meta]) => <option value={value} key={value}>{meta.label}</option>)}</select></label>
+          <label className="dash-field"><span>Vùng sản xuất <b>*</b></span><select required value={form.farmingAreaId} onChange={(event) => handleArea(event.target.value)}><option value="">Chọn vùng sản xuất</option>{areas.map((area) => <option value={area._id} key={area._id}>{area.name}</option>)}</select></label>
+          <label className="dash-field"><span>Địa chỉ / xuất xứ <b>*</b></span><input required value={form.origin} onChange={(event) => update('origin', event.target.value)} placeholder="Địa điểm sản xuất" /></label>
+          <label className="dash-field"><span>Ngày bắt đầu</span><input type="date" value={form.cultivationTime.slice(0, 10)} onChange={(event) => update('cultivationTime', event.target.value)} /></label>
+          <div className="dash-field"><span>Số lượng ban đầu</span><div className="dash-quantity-field"><input type="number" min="0" step="any" disabled={Boolean(editing)} value={form.initialQuantity} onChange={(event) => update('initialQuantity', event.target.value)} placeholder="0" /><input aria-label="Đơn vị" disabled={Boolean(editing)} value={form.unit} onChange={(event) => update('unit', event.target.value)} /></div>{editing && <small>Số lượng được điều chỉnh trong nghiệp vụ tồn kho.</small>}</div>
+          <label className="dash-field dash-field--wide"><span>Mô tả</span><textarea rows={4} value={form.description} onChange={(event) => update('description', event.target.value)} placeholder="Ghi chú giống, quy trình hoặc thông tin cần lưu ý..." /></label>
+          <div className="dash-field dash-field--wide"><span>Hình ảnh (tối đa 5)</span><label className="dash-upload"><input type="file" accept="image/*" multiple onChange={handleFiles} /><Icon name="upload" /><strong>Chọn ảnh từ thiết bị</strong><small>PNG, JPG, WEBP; nên dùng ảnh ngang rõ nét.</small></label>
+            {(form.existingImages.length > 0 || form.newImages.length > 0) && <div className="dash-file-list">{form.existingImages.map((image, index) => <span key={`${image.path}-${index}`}>{image.filename}<button type="button" onClick={() => update('existingImages', form.existingImages.filter((_, itemIndex) => itemIndex !== index))} aria-label={`Bỏ ${image.filename}`}><Icon name="close" size={13} /></button></span>)}{form.newImages.map((file) => <span key={`${file.name}-${file.lastModified}`}>{file.name}</span>)}</div>}
+          </div>
+        </div>
+        <div className="dash-modal__footer"><button className="dash-button dash-button--secondary" type="button" onClick={onClose}>Hủy</button><button className="dash-button dash-button--primary" type="submit" disabled={submitting}>{submitting ? <><span className="dash-spinner" /> Đang lưu...</> : editing ? 'Lưu thay đổi' : 'Tạo lô mới'}</button></div>
+      </form>
+    </ModalShell>
+  );
 };
 
 const DashboardPage: React.FC = () => {
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
   const [products, setProducts] = useState<Product[]>([]);
-  const [trashProducts, setTrashProducts] = useState<Product[]>([]);
-  const [farmingAreas, setFarmingAreas] = useState<FarmingAreaType[]>([]);
+  const [areas, setAreas] = useState<FarmingArea[]>([]);
   const [loading, setLoading] = useState(true);
-  const [trashLoading, setTrashLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [trashError, setTrashError] = useState('');
+  const [loadError, setLoadError] = useState('');
+  const [notice, setNotice] = useState<Notice>(null);
+  const [search, setSearch] = useState(searchParams.get('search') || '');
+  const [statusFilter, setStatusFilter] = useState<'all' | ProductStatus>('all');
+  const [categoryFilter, setCategoryFilter] = useState('all');
+  const [chainFilter, setChainFilter] = useState<'all' | 'verified' | 'pending'>('all');
+  const [dateFilter, setDateFilter] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(5);
+  const [editing, setEditing] = useState<Product | null>(null);
+  const [form, setForm] = useState<ProductFormState>(emptyForm);
+  const [formOpen, setFormOpen] = useState(false);
+  const [formError, setFormError] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState('');
-  const [submitSuccess, setSubmitSuccess] = useState('');
+  const [trashOpen, setTrashOpen] = useState(false);
+  const [trashProducts, setTrashProducts] = useState<Product[]>([]);
+  const [trashLoading, setTrashLoading] = useState(false);
+  const [trashError, setTrashError] = useState('');
+  const [qrProduct, setQrProduct] = useState<Product | null>(null);
   const [cameraProduct, setCameraProduct] = useState<Product | null>(null);
-  const [groupError, setGroupError] = useState('');
-  const [groupSuccess, setGroupSuccess] = useState('');
-  const [categoryOptions, setCategoryOptions] =
-    useState<CategoryStore>(loadCategoryOptions);
-  const [newGroupName, setNewGroupName] = useState('');
-  const [editingGroup, setEditingGroup] = useState<string | null>(null);
-  const [editingGroupName, setEditingGroupName] = useState('');
-  const [isGroupMenuOpen, setIsGroupMenuOpen] = useState(false);
-  const [isTrashOpen, setIsTrashOpen] = useState(false);
-  const groupMenuRef = useRef<HTMLDivElement | null>(null);
-  const [formData, setFormData] = useState({
-    type: 'Plant' as ProductionType,
-    category: loadCategoryOptions().Plant[0] ?? '',
-    name: '',
-    farmingAreaId: '',
-    origin: '',
-    cultivationTime: '',
-    note: '',
-  });
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null);
+  const [confirmBusy, setConfirmBusy] = useState(false);
 
-  useEffect(() => {
-    let mounted = true;
-
-    Promise.all([
-      productApi.getAll(),
-      farmingAreaApi.getAll(),
-    ])
-      .then(([productRes, farmingAreaRes]) => {
-        if (!mounted) return;
-        setProducts(productRes.data.products);
-        setFarmingAreas(farmingAreaRes.data.farmingAreas || []);
-      })
-      .catch((err) => {
-        if (!mounted) return;
-        setError(err.message || 'Lỗi tải dữ liệu');
-      })
-      .finally(() => {
-        if (mounted) setLoading(false);
-      });
-
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    window.localStorage.setItem(CATEGORY_STORAGE_KEY, JSON.stringify(categoryOptions));
-  }, [categoryOptions]);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (!groupMenuRef.current) return;
-      if (!groupMenuRef.current.contains(event.target as Node)) {
-        setIsGroupMenuOpen(false);
-        setEditingGroup(null);
-        setEditingGroupName('');
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
-  useEffect(() => {
-    const options = categoryOptions[formData.type];
-    if (!options.includes(formData.category)) {
-      setFormData((prev) => ({
-        ...prev,
-        category: options[0] ?? '',
-      }));
-    }
-  }, [categoryOptions, formData.category, formData.type]);
-
-  const active = useMemo(
-    () => products.filter((p) => p.status === 'active').length,
-    [products]
-  );
-  const completed = useMemo(
-    () => products.filter((p) => p.status === 'completed').length,
-    [products]
-  );
   const canManageTrash = user?.role === 'admin' || user?.role === 'manager';
-  const canArchiveProduct = user?.role === 'admin';
+  const canArchive = user?.role === 'admin';
 
-  const productionMeta = productionTypeMeta[formData.type];
-  const currentGroupOptions = categoryOptions[formData.type];
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    setLoadError('');
+    try {
+      const productResponse = await productApi.getAll();
+      setProducts(productResponse.data.products || []);
+      try {
+        const areaResponse = await farmingAreaApi.getAll();
+        setAreas(areaResponse.data.farmingAreas || []);
+      } catch (error) {
+        setAreas([]);
+        setNotice({ type: 'info', message: 'Danh sách lô đã tải, nhưng chưa thể tải vùng sản xuất.' });
+      }
+    } catch (error) {
+      setLoadError(getErrorMessage(error, 'Không thể tải dữ liệu tổng quan.'));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  const handleChange =
-    (field: keyof typeof formData) =>
-    (
-      e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
-    ) => {
-      setFormData((prev) => ({ ...prev, [field]: e.target.value }));
-    };
+  useEffect(() => { void loadData(); }, [loadData]);
+  useEffect(() => { setSearch(searchParams.get('search') || ''); }, [searchParams]);
+  useEffect(() => {
+    if (!notice) return;
+    const timeout = window.setTimeout(() => setNotice(null), 4500);
+    return () => window.clearTimeout(timeout);
+  }, [notice]);
 
-  const handleFarmingAreaChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const areaId = e.target.value;
-    const selectedArea = farmingAreas.find((area) => area._id === areaId);
-    setFormData((prev) => ({
-      ...prev,
-      farmingAreaId: areaId,
-      origin: selectedArea?.address || prev.origin,
-    }));
+  const categories = useMemo(() => Array.from(new Set(products.map((product) => product.category).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'vi')), [products]);
+  const sortedProducts = useMemo(() => [...products].sort((a, b) => new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime()), [products]);
+  const filteredProducts = useMemo(() => {
+    const keyword = search.trim().toLocaleLowerCase('vi');
+    return sortedProducts.filter((product) => {
+      const area = getArea(product);
+      const haystack = `${product.name} ${product.batch_code || ''} ${product.category} ${product.origin} ${area?.name || ''}`.toLocaleLowerCase('vi');
+      return (!keyword || haystack.includes(keyword))
+        && (statusFilter === 'all' || product.status === statusFilter)
+        && (categoryFilter === 'all' || product.category === categoryFilter)
+        && (chainFilter === 'all' || (chainFilter === 'verified' ? Boolean(product.onChainBatchId) : !product.onChainBatchId))
+        && (!dateFilter || product.createdAt.slice(0, 10) === dateFilter);
+    });
+  }, [categoryFilter, chainFilter, dateFilter, search, sortedProducts, statusFilter]);
+  const totalPages = Math.max(1, Math.ceil(filteredProducts.length / pageSize));
+  const pagedProducts = useMemo(() => filteredProducts.slice((page - 1) * pageSize, page * pageSize), [filteredProducts, page, pageSize]);
+
+  useEffect(() => { setPage(1); }, [search, statusFilter, categoryFilter, chainFilter, dateFilter, pageSize]);
+  useEffect(() => { if (page > totalPages) setPage(totalPages); }, [page, totalPages]);
+
+  const activeCount = products.filter((product) => product.status === 'active').length;
+  const completedCount = products.filter((product) => product.status === 'completed').length;
+  const verifiedCount = products.filter((product) => Boolean(product.onChainBatchId)).length;
+
+  const openCreate = () => {
+    setEditing(null);
+    setForm(emptyForm());
+    setFormError('');
+    setFormOpen(true);
+  };
+  const openEdit = (product: Product) => {
+    setEditing(product);
+    setForm({
+      type: product.type,
+      name: product.name,
+      category: product.category,
+      farmingAreaId: getAreaId(product),
+      origin: product.origin || getArea(product)?.address || '',
+      cultivationTime: product.cultivation_time || '',
+      initialQuantity: String(product.initial_quantity ?? ''),
+      unit: product.unit || 'kg',
+      description: product.description || '',
+      status: product.status,
+      newImages: [],
+      existingImages: product.images || [],
+    });
+    setFormError('');
+    setFormOpen(true);
   };
 
-  const handleTypeChange = (type: ProductionType) => {
-    setGroupError('');
-    setGroupSuccess('');
-    setEditingGroup(null);
-    setEditingGroupName('');
-    setIsGroupMenuOpen(false);
-    setFormData((prev) => ({
-      ...prev,
-      type,
-      category: categoryOptions[type][0] ?? '',
-    }));
+  const uploadImages = async (files: File[]) => {
+    if (!files.length) return [];
+    const payload = new FormData();
+    files.slice(0, 5).forEach((file) => payload.append('files', file));
+    const { default: axiosClient } = await import('../../core/api/axiosClient');
+    const response = await axiosClient.post<{ files: Array<{ path: string; filename: string; mediaType?: string }> }>('/upload/media', payload, { headers: { 'Content-Type': 'multipart/form-data' } });
+    return response.data.files.filter((file) => !file.mediaType || file.mediaType === 'image').map(({ path, filename }) => ({ path, filename }));
   };
 
-  const buildDescription = () => {
-    if (formData.note.trim()) return formData.note.trim();
-
-    const prefix =
-      formData.type === 'Plant'
-        ? `Lô trồng ${formData.name.trim()}`
-        : `Lô nuôi ${formData.name.trim()}`;
-    const group = formData.category ? `thuộc nhóm ${formData.category}` : '';
-    const location = formData.origin.trim() ? `tại ${formData.origin.trim()}` : '';
-    const date = formData.cultivationTime
-      ? `bắt đầu ${formatDate(formData.cultivationTime)}`
-      : '';
-
-    return [prefix, group, location, date].filter(Boolean).join(', ');
-  };
-
-  const handleAddGroup = () => {
-    const normalizedName = normalizeGroupName(newGroupName);
-    setGroupError('');
-    setGroupSuccess('');
-
-    if (!normalizedName) {
-      setGroupError('Nhập tên nhóm sản phẩm trước khi thêm.');
+  const saveProduct = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setFormError('');
+    if (!form.name.trim() || !form.category.trim() || !form.farmingAreaId || !form.origin.trim()) {
+      setFormError('Vui lòng điền đủ tên lô, nhóm sản phẩm, vùng sản xuất và xuất xứ.');
       return;
     }
-
-    const duplicated = currentGroupOptions.some(
-      (item) => item.toLowerCase() === normalizedName.toLowerCase()
-    );
-    if (duplicated) {
-      setGroupError('Nhóm sản phẩm này đã tồn tại.');
+    if (form.newImages.some((file) => file.size > 5 * 1024 * 1024)) {
+      setFormError('Mỗi hình ảnh cần nhỏ hơn 5 MB.');
       return;
     }
-
-    const nextOptions = [...currentGroupOptions, normalizedName];
-    setCategoryOptions((prev) => ({
-      ...prev,
-      [formData.type]: nextOptions,
-    }));
-    setFormData((prev) => ({
-      ...prev,
-      category: normalizedName,
-    }));
-    setNewGroupName('');
-    setGroupSuccess(`Đã thêm nhóm "${normalizedName}".`);
-  };
-
-  const handleStartEditGroup = (groupName: string) => {
-    setGroupError('');
-    setGroupSuccess('');
-    setEditingGroup(groupName);
-    setEditingGroupName(groupName);
-  };
-
-  const handleSaveGroup = (groupName: string) => {
-    const normalizedName = normalizeGroupName(editingGroupName);
-    setGroupError('');
-    setGroupSuccess('');
-
-    if (!normalizedName) {
-      setGroupError('Tên nhóm sản phẩm không được để trống.');
-      return;
-    }
-
-    const duplicated = currentGroupOptions.some(
-      (item) =>
-        item.toLowerCase() === normalizedName.toLowerCase() &&
-        item.toLowerCase() !== groupName.toLowerCase()
-    );
-    if (duplicated) {
-      setGroupError('Tên nhóm mới đang trùng với một nhóm đã có.');
-      return;
-    }
-
-    const nextOptions = currentGroupOptions.map((item) =>
-      item === groupName ? normalizedName : item
-    );
-    setCategoryOptions((prev) => ({
-      ...prev,
-      [formData.type]: nextOptions,
-    }));
-    setFormData((prev) => ({
-      ...prev,
-      category: prev.category === groupName ? normalizedName : prev.category,
-    }));
-    setEditingGroup(null);
-    setEditingGroupName('');
-    setGroupSuccess(`Đã cập nhật nhóm thành "${normalizedName}".`);
-  };
-
-  const handleSelectGroup = (groupName: string) => {
-    setGroupError('');
-    setGroupSuccess('');
-    setFormData((prev) => ({
-      ...prev,
-      category: groupName,
-    }));
-    setIsGroupMenuOpen(false);
-    setEditingGroup(null);
-    setEditingGroupName('');
-  };
-
-  const handleDeleteGroup = (groupName: string) => {
-    setGroupError('');
-    setGroupSuccess('');
-
-    const nextOptions = currentGroupOptions.filter((item) => item !== groupName);
-    setCategoryOptions((prev) => ({
-      ...prev,
-      [formData.type]: nextOptions,
-    }));
-    setFormData((prev) => ({
-      ...prev,
-      category: prev.category === groupName ? nextOptions[0] ?? '' : prev.category,
-    }));
-    setEditingGroup((prev) => (prev === groupName ? null : prev));
-    setEditingGroupName('');
-    setGroupSuccess(`Đã xóa nhóm "${groupName}".`);
-  };
-
-  const handleCreate = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSubmitError('');
-    setSubmitSuccess('');
-
-    if (!formData.category.trim()) {
-      setSubmitError('Vui lòng tạo hoặc chọn một nhóm sản phẩm.');
-      return;
-    }
-
-    if (!formData.name.trim() || !formData.origin.trim()) {
-      setSubmitError('Vui lòng nhập tên lô và nơi sản xuất.');
-      return;
-    }
-
     setSubmitting(true);
     try {
-      const { data } = await productApi.create({
-        name: formData.name.trim(),
-        category: formData.category,
-        type: formData.type,
-        description: buildDescription(),
-        origin: formData.origin.trim(),
-        cultivation_time: formData.cultivationTime || undefined,
-        farming_area: formData.farmingAreaId || undefined,
-      });
-
-      setProducts((prev) => [data.product, ...prev]);
-      setFormData((prev) => ({
-        ...prev,
-        category: categoryOptions[prev.type][0] ?? '',
-        name: '',
-        farmingAreaId: '',
-        origin: '',
-        cultivationTime: '',
-        note: '',
-      }));
-      setSubmitSuccess('Tạo lô nông sản thành công.');
-    } catch (err: any) {
-      setSubmitError(err.message || 'Không tạo được lô hàng.');
+      const uploaded = await uploadImages(form.newImages);
+      if (editing) {
+        const response = await productApi.update(editing._id, {
+          type: form.type,
+          name: form.name.trim(),
+          category: form.category.trim(),
+          farming_area: form.farmingAreaId,
+          origin: form.origin.trim(),
+          cultivation_time: form.cultivationTime || undefined,
+          description: form.description.trim(),
+          images: [...form.existingImages, ...uploaded].slice(0, 5),
+          status: form.status,
+        });
+        setProducts((current) => current.map((item) => item._id === response.data.product._id ? response.data.product : item));
+        setNotice({ type: 'success', message: `Đã cập nhật lô “${response.data.product.name}”.` });
+      } else {
+        const quantity = form.initialQuantity ? Number(form.initialQuantity) : 0;
+        const response = await productApi.create({
+          type: form.type,
+          name: form.name.trim(),
+          category: form.category.trim(),
+          farming_area: form.farmingAreaId,
+          origin: form.origin.trim(),
+          cultivation_time: form.cultivationTime || undefined,
+          initial_quantity: quantity,
+          current_quantity: quantity,
+          unit: form.unit.trim() || 'kg',
+          description: form.description.trim(),
+          images: uploaded,
+        });
+        setProducts((current) => [response.data.product, ...current]);
+        setNotice({ type: 'success', message: `Đã tạo lô “${response.data.product.name}”.` });
+      }
+      setFormOpen(false);
+    } catch (error) {
+      setFormError(getErrorMessage(error, editing ? 'Không thể cập nhật lô.' : 'Không thể tạo lô mới.'));
     } finally {
       setSubmitting(false);
     }
   };
 
-  const loadTrash = async () => {
-    setIsTrashOpen(true);
+  const openTrash = async () => {
+    setTrashOpen(true);
     setTrashLoading(true);
     setTrashError('');
     try {
-      const { data } = await productApi.getTrash();
-      setTrashProducts(data.products);
-    } catch (err: any) {
-      setTrashError(err.message || 'Không tải được thùng rác');
+      const response = await productApi.getTrash();
+      setTrashProducts(response.data.products || []);
+    } catch (error) {
+      setTrashError(getErrorMessage(error, 'Không thể tải thùng rác.'));
     } finally {
       setTrashLoading(false);
     }
   };
 
-  const handleArchiveProduct = async (product: Product) => {
-    if (!window.confirm(`Lưu trữ lô "${product.name}"? Lô sẽ được đưa vào thùng rác và có thể khôi phục sau.`)) {
-      return;
-    }
+  const restoreProduct = async (product: Product) => {
     try {
-      await productApi.delete(product._id);
-      setProducts((prev) => prev.filter((item) => item._id !== product._id));
-      setSubmitSuccess(`Đã đưa "${product.name}" vào thùng rác.`);
-    } catch (err: any) {
-      setSubmitError(err.message || 'Không thể lưu trữ lô.');
+      const response = await productApi.restore(product._id);
+      setTrashProducts((current) => current.filter((item) => item._id !== product._id));
+      setProducts((current) => [response.data.product, ...current]);
+      setNotice({ type: 'success', message: `Đã khôi phục lô “${product.name}”.` });
+    } catch (error) {
+      setTrashError(getErrorMessage(error, 'Không thể khôi phục lô.'));
     }
   };
 
-  const handleRestoreProduct = async (product: Product) => {
+  const runConfirmedAction = async () => {
+    if (!confirmAction) return;
+    setConfirmBusy(true);
     try {
-      const { data } = await productApi.restore(product._id);
-      setTrashProducts((prev) => prev.filter((item) => item._id !== product._id));
-      setProducts((prev) => [data.product, ...prev]);
-      setTrashError('');
-    } catch (err: any) {
-      setTrashError(err.message || 'Không thể khôi phục lô.');
+      if (confirmAction.kind === 'archive') {
+        await productApi.delete(confirmAction.product._id);
+        setProducts((current) => current.filter((item) => item._id !== confirmAction.product._id));
+        setNotice({ type: 'success', message: `Đã chuyển “${confirmAction.product.name}” vào thùng rác.` });
+      } else {
+        await productApi.permanentDelete(confirmAction.product._id);
+        setTrashProducts((current) => current.filter((item) => item._id !== confirmAction.product._id));
+        setNotice({ type: 'success', message: `Đã xóa vĩnh viễn “${confirmAction.product.name}”.` });
+      }
+      setConfirmAction(null);
+    } catch (error) {
+      const message = getErrorMessage(error, 'Không thể hoàn tất thao tác.');
+      if (confirmAction.kind === 'permanent') setTrashError(message);
+      else setNotice({ type: 'error', message });
+      setConfirmAction(null);
+    } finally {
+      setConfirmBusy(false);
     }
   };
 
-  const handlePermanentDelete = async (product: Product) => {
-    if (!window.confirm(`Xóa vĩnh viễn lô "${product.name}"? Chỉ lô chưa có lịch sử liên quan mới được xóa.`)) {
-      return;
-    }
-    try {
-      await productApi.permanentDelete(product._id);
-      setTrashProducts((prev) => prev.filter((item) => item._id !== product._id));
-      setTrashError('');
-    } catch (err: any) {
-      setTrashError(err.message || 'Không thể xóa vĩnh viễn lô.');
-    }
+  const resetFilters = () => {
+    setSearch('');
+    setStatusFilter('all');
+    setCategoryFilter('all');
+    setChainFilter('all');
+    setDateFilter('');
   };
+  const hasFilters = Boolean(search || statusFilter !== 'all' || categoryFilter !== 'all' || chainFilter !== 'all' || dateFilter);
 
-  if (loading) return (
-    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 400 }}>
-      <p style={{ color: colors.textSecondary }}>Đang tải...</p>
-    </div>
-  );
-  if (error) return (
-    <div style={{ padding: spacing[6], background: '#fef2f2', borderRadius: borderRadius.lg, color: colors.error }}>
-      Lỗi: {error}
-    </div>
-  );
+  if (loading) {
+    return <div className="dash-state"><span className="dash-spinner dash-spinner--large" /><strong>Đang tải không gian quản lý...</strong><p>Dữ liệu lô và vùng sản xuất đang được đồng bộ.</p></div>;
+  }
+  if (loadError) {
+    return <div className="dash-state dash-state--error"><span><Icon name="warning" size={28} /></span><strong>Không thể tải Dashboard</strong><p>{loadError}</p><button className="dash-button dash-button--primary" type="button" onClick={() => void loadData()}><Icon name="refresh" size={17} /> Thử lại</button></div>;
+  }
 
   return (
-    <div>
-      {cameraProduct && (
-        <ProductCameraModal
-          product={cameraProduct}
-          onClose={() => setCameraProduct(null)}
-          onSaved={(updatedProduct) => {
-            setProducts((prev) =>
-              prev.map((item) =>
-                item._id === updatedProduct._id ? updatedProduct : item
-              )
-            );
-          }}
-        />
-      )}
+    <div className="dash-page">
+      {notice && <div className={`dash-toast dash-toast--${notice.type}`} role="status"><Icon name={notice.type === 'success' ? 'check' : notice.type === 'error' ? 'warning' : 'history'} size={19} /><span>{notice.message}</span><button type="button" onClick={() => setNotice(null)} aria-label="Đóng thông báo"><Icon name="close" size={15} /></button></div>}
+      {cameraProduct && <ProductCameraModal product={cameraProduct} onClose={() => setCameraProduct(null)} onSaved={(updated) => { setProducts((current) => current.map((item) => item._id === updated._id ? updated : item)); setCameraProduct(updated); setNotice({ type: 'success', message: 'Đã cập nhật camera của lô.' }); }} />}
+      {formOpen && <ProductFormModal editing={editing} form={form} setForm={setForm} areas={areas} categories={categories} submitting={submitting} error={formError} onClose={() => setFormOpen(false)} onSubmit={saveProduct} />}
+      {qrProduct && <ModalShell title={`Mã QR · ${qrProduct.name}`} description="Quét mã để mở hồ sơ truy xuất công khai." size="small" onClose={() => setQrProduct(null)}><div className="dash-qr-modal"><QRCodeSVG value={`${window.location.origin}/trace/${qrProduct._id}`} size={220} level="H" marginSize={2} /><strong>{qrProduct.batch_code || qrProduct._id}</strong><Link className="dash-button dash-button--primary" to={`/trace/${qrProduct._id}`}>Mở hồ sơ truy xuất <Icon name="arrow" size={17} /></Link></div></ModalShell>}
+      {trashOpen && <ModalShell title="Thùng rác lô nông sản" description="Khôi phục lô đã lưu trữ hoặc xóa vĩnh viễn khi không còn dữ liệu liên quan." onClose={() => setTrashOpen(false)}><div className="dash-trash-content">{trashError && <div className="dash-form-message dash-form-message--error">{trashError}</div>}{trashLoading ? <div className="dash-compact-empty"><span className="dash-spinner" /> Đang tải...</div> : !trashProducts.length ? <div className="dash-empty"><span><Icon name="trash" size={28} /></span><strong>Thùng rác đang trống</strong><p>Các lô đã lưu trữ sẽ xuất hiện tại đây.</p></div> : <div className="dash-trash-list">{trashProducts.map((product) => <article key={product._id}><ProductThumb product={product} /><div><strong>{product.name}</strong><span>{product.batch_code || product._id.slice(-8).toUpperCase()} · Xóa {formatDate(product.deletedAt)}</span></div><button className="dash-button dash-button--secondary" type="button" onClick={() => void restoreProduct(product)}><Icon name="restore" size={16} /> Khôi phục</button>{user?.role === 'admin' && <button className="dash-button dash-button--danger" type="button" onClick={() => setConfirmAction({ kind: 'permanent', product })}><Icon name="trash" size={16} /> Xóa hẳn</button>}</article>)}</div>}</div></ModalShell>}
+      {confirmAction && <ModalShell title={confirmAction.kind === 'archive' ? 'Lưu trữ lô?' : 'Xóa vĩnh viễn lô?'} description={confirmAction.kind === 'archive' ? 'Lô sẽ được chuyển vào thùng rác và có thể khôi phục.' : 'Thao tác này không thể hoàn tác và chỉ thành công nếu lô không có dữ liệu liên quan.'} size="small" onClose={() => !confirmBusy && setConfirmAction(null)}><div className="dash-confirm"><span className={confirmAction.kind === 'archive' ? '' : 'is-danger'}><Icon name={confirmAction.kind === 'archive' ? 'archive' : 'warning'} size={28} /></span><strong>{confirmAction.product.name}</strong><p>{confirmAction.product.batch_code || confirmAction.product._id}</p><div className="dash-modal__footer"><button className="dash-button dash-button--secondary" type="button" disabled={confirmBusy} onClick={() => setConfirmAction(null)}>Hủy</button><button className={`dash-button ${confirmAction.kind === 'archive' ? 'dash-button--primary' : 'dash-button--danger'}`} type="button" disabled={confirmBusy} onClick={() => void runConfirmedAction()}>{confirmBusy ? 'Đang xử lý...' : confirmAction.kind === 'archive' ? 'Chuyển vào thùng rác' : 'Xóa vĩnh viễn'}</button></div></div></ModalShell>}
 
-      {isTrashOpen && (
-        <div
-          onMouseDown={(event) => event.target === event.currentTarget && setIsTrashOpen(false)}
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 1000,
-            background: 'rgba(15, 23, 42, 0.45)',
-            display: 'grid',
-            placeItems: 'center',
-            padding: spacing[5],
-          }}
-        >
-          <div
-            style={{
-              width: 'min(860px, 100%)',
-              maxHeight: '86vh',
-              overflow: 'auto',
-              background: colors.surface,
-              borderRadius: borderRadius.xl,
-              boxShadow: shadows.lg,
-              border: `1px solid ${colors.neutral[200]}`,
-            }}
-          >
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'flex-start',
-                gap: spacing[4],
-                padding: spacing[6],
-                borderBottom: `1px solid ${colors.neutral[200]}`,
-              }}
-            >
-              <div>
-                <h2 style={{ margin: 0, fontSize: typography.sizes.xl }}>
-                  Thùng rác lô nông sản
-                </h2>
-                <p style={{ margin: `${spacing[1]} 0 0`, color: colors.textSecondary }}>
-                  Khôi phục lô đã lưu trữ hoặc xóa vĩnh viễn khi không còn dữ liệu liên quan.
-                </p>
-              </div>
-              <button type="button" onClick={() => setIsTrashOpen(false)} style={secondaryButtonStyle}>
-                Đóng
-              </button>
+      <header className="dash-page-header">
+        <div><p className="dash-eyebrow">AgriTrace · Trung tâm vận hành</p><h1>Tổng quan truy xuất</h1><p>Theo dõi lô nông sản, tồn kho và tình trạng xác thực trong một màn hình.</p></div>
+        <div className="dash-page-header__actions">{canManageTrash && <button className="dash-button dash-button--secondary" type="button" onClick={() => void openTrash()}><Icon name="trash" size={17} /> Thùng rác</button>}<button className="dash-button dash-button--primary" type="button" onClick={openCreate}><Icon name="plus" size={18} /> Tạo lô mới</button></div>
+      </header>
+
+      <section className="dash-stats" aria-label="Số liệu tổng quan">
+        <StatCard icon="cube" label="Tổng số lô" value={products.length} helper="Toàn bộ lô đang quản lý" />
+        <StatCard icon="eye" label="Đang theo dõi" value={activeCount} helper={`${products.length ? Math.round((activeCount / products.length) * 100) : 0}% tổng số lô`} />
+        <StatCard icon="check" label="Đã hoàn thành" value={completedCount} helper="Sẵn sàng cho phân phối" tone="blue" />
+        <StatCard icon="chain" label="Blockchain sẵn sàng" value={verifiedCount} helper={`${products.length ? Math.round((verifiedCount / products.length) * 100) : 0}% đã được xác thực`} tone="amber" />
+      </section>
+
+      <div className="dash-layout">
+        <div className="dash-layout__main">
+          <section className="dash-panel dash-products-card">
+            <div className="dash-panel__header dash-products-card__header"><div><p className="dash-eyebrow">Danh sách vận hành</p><h2>Lô nông sản gần đây</h2></div><span>{filteredProducts.length} / {products.length} lô</span></div>
+            <div className="dash-filters">
+              <label className="dash-search"><span className="sr-only">Tìm kiếm lô</span><Icon name="search" size={19} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Tìm tên, mã lô, vùng sản xuất..." />{search && <button type="button" onClick={() => setSearch('')} aria-label="Xóa từ khóa"><Icon name="close" size={15} /></button>}</label>
+              <label><span className="sr-only">Lọc trạng thái</span><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as 'all' | ProductStatus)}><option value="all">Tất cả trạng thái</option>{Object.entries(statusMeta).map(([value, meta]) => <option value={value} key={value}>{meta.label}</option>)}</select></label>
+              <label><span className="sr-only">Lọc nhóm sản phẩm</span><select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}><option value="all">Tất cả sản phẩm</option>{categories.map((category) => <option value={category} key={category}>{category}</option>)}</select></label>
+              <label><span className="sr-only">Lọc blockchain</span><select value={chainFilter} onChange={(event) => setChainFilter(event.target.value as typeof chainFilter)}><option value="all">Mọi trạng thái chuỗi</option><option value="verified">Đã xác thực</option><option value="pending">Chờ đồng bộ</option></select></label>
+              <label className="dash-date-filter"><span className="sr-only">Lọc ngày tạo</span><input type="date" value={dateFilter} onChange={(event) => setDateFilter(event.target.value)} /></label>
+              {hasFilters && <button className="dash-reset" type="button" onClick={resetFilters}><Icon name="refresh" size={15} /> Đặt lại</button>}
             </div>
-
-            <div style={{ padding: spacing[6] }}>
-              {trashError && (
-                <div
-                  style={{
-                    marginBottom: spacing[4],
-                    padding: spacing[3],
-                    borderRadius: borderRadius.lg,
-                    border: '1px solid #fecaca',
-                    background: '#fff5f5',
-                    color: '#b91c1c',
-                  }}
-                >
-                  {trashError}
-                </div>
-              )}
-
-              {trashLoading ? (
-                <div style={{ padding: spacing[8], textAlign: 'center', color: colors.textSecondary }}>
-                  Đang tải thùng rác...
-                </div>
-              ) : trashProducts.length === 0 ? (
-                <div style={{ padding: spacing[8], textAlign: 'center', color: colors.textSecondary }}>
-                  Thùng rác đang trống.
-                </div>
-              ) : (
-                <div style={{ display: 'grid', gap: spacing[3] }}>
-                  {trashProducts.map((product) => {
-                    const deletedBy = product.deleted_by as any;
-                    return (
-                      <div
-                        key={product._id}
-                        style={{
-                          display: 'grid',
-                          gridTemplateColumns: '1fr auto',
-                          gap: spacing[4],
-                          padding: spacing[4],
-                          border: `1px solid ${colors.neutral[200]}`,
-                          borderRadius: borderRadius.lg,
-                          background: colors.neutral[50],
-                        }}
-                      >
-                        <div>
-                          <strong>{product.name}</strong>
-                          <div style={{ marginTop: spacing[1], color: colors.textSecondary, fontSize: typography.sizes.sm }}>
-                            {product.category} • {product.origin}
-                          </div>
-                          <div style={{ marginTop: spacing[1], color: colors.textMuted, fontSize: typography.sizes.xs }}>
-                            Lưu trữ: {formatDate(product.deletedAt)}{deletedBy ? ` bởi ${deletedBy.first_name || ''} ${deletedBy.last_name || ''}` : ''}
-                          </div>
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: spacing[2], flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                          <button
-                            type="button"
-                            onClick={() => handleRestoreProduct(product)}
-                            style={{
-                              ...secondaryButtonStyle,
-                              borderColor: '#86efac',
-                              background: '#f0fdf4',
-                              color: '#166534',
-                            }}
-                          >
-                            Khôi phục
-                          </button>
-                          {user?.role === 'admin' && (
-                            <button
-                              type="button"
-                              onClick={() => handlePermanentDelete(product)}
-                              style={{
-                                ...secondaryButtonStyle,
-                                borderColor: '#fecaca',
-                                background: '#fff5f5',
-                                color: '#b91c1c',
-                              }}
-                            >
-                              Xóa vĩnh viễn
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
+            <ProductList products={pagedProducts} startIndex={(page - 1) * pageSize} canArchive={canArchive} onEdit={openEdit} onQr={setQrProduct} onCamera={setCameraProduct} onArchive={(product) => setConfirmAction({ kind: 'archive', product })} />
+            {filteredProducts.length > 0 && <div className="dash-pagination"><p>Hiển thị <strong>{(page - 1) * pageSize + 1}–{Math.min(page * pageSize, filteredProducts.length)}</strong> trong {filteredProducts.length} lô</p><div><button type="button" disabled={page === 1} onClick={() => setPage((current) => current - 1)} aria-label="Trang trước">‹</button>{Array.from({ length: totalPages }, (_, index) => index + 1).filter((item) => item === 1 || item === totalPages || Math.abs(item - page) <= 1).map((item, index, list) => <React.Fragment key={item}>{index > 0 && item - list[index - 1] > 1 && <span>…</span>}<button type="button" className={item === page ? 'is-active' : ''} onClick={() => setPage(item)} aria-current={item === page ? 'page' : undefined}>{item}</button></React.Fragment>)}</div><label><span className="sr-only">Số dòng mỗi trang</span><select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value))}><option value={5}>5 / trang</option><option value={10}>10 / trang</option><option value={20}>20 / trang</option></select></label></div>}
+          </section>
+          <ActivityChart products={products} />
         </div>
-      )}
-
-      {/* Page Header */}
-      <div style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'flex-start',
-        marginBottom: spacing[8],
-        gap: spacing[4],
-        flexWrap: 'wrap',
-      }}>
-        <div>
-          <h1 style={{ 
-            margin: 0, 
-            fontSize: typography.sizes['3xl'], 
-            fontWeight: typography.weights.bold,
-            color: colors.textPrimary,
-          }}>
-            Lô nông sản
-          </h1>
-          <p style={{ margin: `${spacing[2]} 0 0`, color: colors.textSecondary, fontSize: typography.sizes.base }}>
-            Tạo lô mới và quản lý truy xuất nguồn gốc
-          </p>
-        </div>
-        <div style={{ display: 'flex', gap: spacing[3], flexWrap: 'wrap' }}>
-          {canManageTrash && (
-            <button type="button" onClick={loadTrash} style={secondaryButtonStyle}>
-              Thùng rác
-            </button>
-          )}
-          <Link
-            to="/add-event"
-            style={{
-              padding: `${spacing[3]} ${spacing[5]}`,
-              borderRadius: borderRadius.lg,
-              background: colors.primary[600],
-              color: 'white',
-              textDecoration: 'none',
-              fontWeight: typography.weights.semibold,
-              fontSize: typography.sizes.sm,
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: spacing[2],
-            }}
-          >
-            <span>+</span> Ghi sự kiện
-          </Link>
-        </div>
-      </div>
-
-      {/* Stats Row */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: spacing[5], marginBottom: spacing[8] }}>
-        <StatCard
-          label="Tổng lô hàng"
-          value={products.length}
-          icon={<CubeIcon color={colors.neutral[600]} />}
-          borderAccent={colors.neutral[400]}
-        />
-        <StatCard
-          label="Đang theo dõi"
-          value={active}
-          color={colors.primary[700]}
-          icon={<ActivityIcon color={colors.primary[600]} />}
-          borderAccent={colors.primary[500]}
-        />
-        <StatCard
-          label="Hoàn tất"
-          value={completed}
-          color="#1d4ed8"
-          icon={<CheckBadgeIcon color="#2563eb" />}
-          borderAccent="#2563eb"
-        />
-      </div>
-
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'minmax(360px, 480px) minmax(0, 1fr)',
-        gap: spacing[6],
-        alignItems: 'start',
-      }}>
-        {/* Create Form */}
-        <form
-          onSubmit={handleCreate}
-          style={{
-            background: colors.surface,
-            borderRadius: borderRadius.xl,
-            padding: spacing[6],
-            boxShadow: shadows.md,
-            border: `1px solid ${colors.neutral[200]}`,
-            display: 'grid',
-            gap: spacing[5],
-          }}
-        >
-          <div>
-            <h2 style={{ margin: 0, fontSize: typography.sizes.xl, fontWeight: typography.weights.semibold }}>
-              Tạo lô hàng mới
-            </h2>
-            <p style={{ margin: `${spacing[2]} 0 0`, color: colors.textSecondary, fontSize: typography.sizes.sm }}>
-              Chọn mô hình sản xuất và nhập thông tin lô
-            </p>
-          </div>
-
-          {/* Production Type Tabs */}
-          <div style={{ display: 'grid', gap: spacing[2] }}>
-            <span style={{ fontWeight: typography.weights.medium, fontSize: typography.sizes.sm }}>Mô hình sản xuất</span>
-            <div style={{ display: 'flex', gap: spacing[3] }}>
-              {(Object.keys(productionTypeMeta) as ProductionType[]).map((type) => {
-                const activeTab = formData.type === type;
-                const meta = productionTypeMeta[type];
-                return (
-                  <button
-                    key={type}
-                    type="button"
-                    onClick={() => handleTypeChange(type)}
-                    style={{
-                      flex: 1,
-                      padding: `${spacing[3]} ${spacing[4]}`,
-                      borderRadius: borderRadius.lg,
-                      border: activeTab ? `2px solid ${colors.primary[600]}` : `1px solid ${colors.neutral[200]}`,
-                      background: activeTab ? `linear-gradient(135deg, ${colors.primary[50]}, #f0fdf4)` : colors.surface,
-                      color: activeTab ? colors.primary[800] : colors.textSecondary,
-                      cursor: 'pointer',
-                      textAlign: 'left',
-                      transition: 'all 0.2s ease',
-                      boxShadow: activeTab ? '0 4px 12px rgba(34, 197, 94, 0.12)' : 'none',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: spacing[3],
-                    }}
-                  >
-                    <span style={{ fontSize: 24 }}>{meta.icon}</span>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontWeight: 700, fontSize: typography.sizes.sm }}>{meta.label}</div>
-                      <div style={{ fontSize: 11, marginTop: 2, opacity: 0.8, lineHeight: 1.2 }}>
-                        {meta.subtitle}
-                      </div>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <div style={{ display: 'grid', gap: 10 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-              <span style={{ fontWeight: 700 }}>Nhóm sản phẩm</span>
-              <span style={{ color: '#6b7280', fontSize: 12 }}>
-                Quản lý gọn ngay trong combobox
-              </span>
-            </div>
-
-            <div
-              ref={groupMenuRef}
-              style={{
-                position: 'relative',
-              }}
-            >
-              <button
-                type="button"
-                onClick={() => setIsGroupMenuOpen((prev) => !prev)}
-                style={{
-                  ...fieldStyle,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  background: '#fff',
-                  cursor: 'pointer',
-                  textAlign: 'left',
-                  border: isGroupMenuOpen ? `1px solid ${colors.primary[500]}` : `1px solid ${colors.neutral[300]}`,
-                  boxShadow: isGroupMenuOpen ? `0 0 0 3px ${colors.primary[100]}` : 'none',
-                }}
-              >
-                <span style={{ color: formData.category ? colors.textPrimary : colors.textMuted, fontWeight: formData.category ? 600 : 400 }}>
-                  {formData.category || 'Chưa có nhóm. Bấm để thêm nhóm mới'}
-                </span>
-                <span style={{ display: 'flex', alignItems: 'center', color: colors.textSecondary }}>
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" style={{ width: 14, height: 14, transform: isGroupMenuOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s ease' }}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-                  </svg>
-                </span>
-              </button>
-
-              {isGroupMenuOpen && (
-                <div
-                  style={{
-                    position: 'absolute',
-                    zIndex: 10,
-                    top: 'calc(100% + 8px)',
-                    left: 0,
-                    right: 0,
-                    background: '#fff',
-                    border: '1px solid #d1d5db',
-                    borderRadius: 14,
-                    boxShadow: '0 18px 40px rgba(15, 23, 42, 0.14)',
-                    padding: 14,
-                    display: 'grid',
-                    gap: 10,
-                  }}
-                >
-                  <div style={{ display: 'flex', gap: 8 }}>
-                    <input
-                      value={newGroupName}
-                      onChange={(e) => setNewGroupName(e.target.value)}
-                      placeholder={
-                        formData.type === 'Plant'
-                          ? 'Ví dụ: Rau ăn lá hữu cơ'
-                          : 'Ví dụ: Gà thả vườn'
-                      }
-                      style={{ ...fieldStyle, flex: 1 }}
-                    />
-                    <button
-                      type="button"
-                      onClick={handleAddGroup}
-                      style={{
-                        padding: '10px 16px',
-                        borderRadius: 10,
-                        border: 'none',
-                        background: '#166534',
-                        color: '#fff',
-                        fontWeight: 700,
-                        cursor: 'pointer',
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      Thêm
-                    </button>
-                  </div>
-
-                  <div
-                    style={{
-                      maxHeight: 260,
-                      overflowY: 'auto',
-                      display: 'grid',
-                      gap: 8,
-                    }}
-                  >
-                    {currentGroupOptions.length === 0 ? (
-                      <div
-                        style={{
-                          border: '1px dashed #cbd5e1',
-                          borderRadius: 10,
-                          padding: 12,
-                          color: '#64748b',
-                          fontSize: 14,
-                        }}
-                      >
-                        Chưa có nhóm nào cho mô hình này. Thêm nhóm đầu tiên để tạo lô.
-                      </div>
-                    ) : (
-                      currentGroupOptions.map((item) => (
-                        <div
-                          key={item}
-                          style={{
-                            display: 'flex',
-                            gap: 10,
-                            alignItems: 'center',
-                            justifyContent: 'space-between',
-                            border: '1px solid #e5e7eb',
-                            borderRadius: 10,
-                            padding: 10,
-                            background: formData.category === item ? '#f0fdf4' : '#fff',
-                          }}
-                        >
-                          {editingGroup === item ? (
-                            <>
-                              <input
-                                value={editingGroupName}
-                                onChange={(e) => setEditingGroupName(e.target.value)}
-                                style={{ ...fieldStyle, flex: 1, padding: 10 }}
-                                autoFocus
-                              />
-                              <div style={{ display: 'flex', gap: 6 }}>
-                                <button
-                                  type="button"
-                                  onClick={() => handleSaveGroup(item)}
-                                  style={{
-                                    ...ghostButtonStyle,
-                                    color: '#166534',
-                                    background: '#dcfce7',
-                                  }}
-                                >
-                                  Lưu
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setEditingGroup(null);
-                                    setEditingGroupName('');
-                                  }}
-                                  style={ghostButtonStyle}
-                                >
-                                  Hủy
-                                </button>
-                              </div>
-                            </>
-                          ) : (
-                            <>
-                              <button
-                                type="button"
-                                onClick={() => handleSelectGroup(item)}
-                                style={{
-                                  border: 'none',
-                                  background: 'transparent',
-                                  cursor: 'pointer',
-                                  textAlign: 'left',
-                                  flex: 1,
-                                  padding: 0,
-                                  color: '#111827',
-                                  fontWeight: formData.category === item ? 700 : 500,
-                                }}
-                              >
-                                {item}
-                              </button>
-                              <div style={{ display: 'flex', gap: 4 }}>
-                                <button
-                                  type="button"
-                                  onClick={() => handleStartEditGroup(item)}
-                                  style={ghostButtonStyle}
-                                >
-                                  Sửa
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeleteGroup(item)}
-                                  style={{
-                                    ...ghostButtonStyle,
-                                    color: '#b91c1c',
-                                  }}
-                                >
-                                  Xóa
-                                </button>
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      ))
-                    )}
-                  </div>
-
-                  {groupError && (
-                    <div
-                      style={{
-                        background: '#fef2f2',
-                        color: '#b91c1c',
-                        border: '1px solid #fecaca',
-                        borderRadius: 10,
-                        padding: 12,
-                      }}
-                    >
-                      {groupError}
-                    </div>
-                  )}
-
-                  {groupSuccess && (
-                    <div
-                      style={{
-                        background: '#f0fdf4',
-                        color: '#166534',
-                        border: '1px solid #bbf7d0',
-                        borderRadius: 10,
-                        padding: 12,
-                      }}
-                    >
-                      {groupSuccess}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Vùng trồng dropdown */}
-          <label style={{ display: 'grid', gap: 8 }}>
-            <span style={{ fontWeight: 700 }}>Vùng trồng / Trang trại</span>
-            <select
-              value={formData.farmingAreaId}
-              onChange={handleFarmingAreaChange}
-              style={{ ...fieldStyle, background: colors.surface }}
-            >
-              <option value="">-- Chọn vùng trồng (tùy chọn) --</option>
-              {farmingAreas.map((area) => (
-                <option key={area._id} value={area._id}>
-                  {area.name} - {area.address}
-                </option>
-              ))}
-            </select>
-            <span style={{ fontSize: typography.sizes.xs, color: colors.textSecondary }}>
-              Chọn vùng trồng sẽ tự động điền nơi sản xuất
-            </span>
-          </label>
-
-          <label style={{ display: 'grid', gap: 8 }}>
-            <span style={{ fontWeight: 700 }}>Tên lô / sản phẩm chính</span>
-            <input
-              value={formData.name}
-              onChange={handleChange('name')}
-              placeholder={productionMeta.placeholder}
-              style={fieldStyle}
-            />
-          </label>
-
-          <label style={{ display: 'grid', gap: 8 }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontWeight: 700 }}>Nơi sản xuất</span>
-              {formData.farmingAreaId && (
-                <span style={{ fontSize: typography.sizes.xs, color: colors.primary[600] }}>
-                  ✓ Từ vùng trồng
-                </span>
-              )}
-            </div>
-            <input
-              value={formData.origin}
-              onChange={handleChange('origin')}
-              placeholder="Ví dụ: Đà Lạt, Lâm Đồng"
-              style={{
-                ...fieldStyle,
-                background: formData.farmingAreaId ? colors.neutral[50] : colors.surface,
-              }}
-            />
-          </label>
-
-          <label style={{ display: 'grid', gap: 8 }}>
-            <span style={{ fontWeight: 700 }}>{productionMeta.startLabel}</span>
-            <input
-              type="date"
-              value={formData.cultivationTime}
-              onChange={handleChange('cultivationTime')}
-              style={fieldStyle}
-            />
-          </label>
-
-          <label style={{ display: 'grid', gap: 8 }}>
-            <span style={{ fontWeight: 700 }}>Ghi chú lô</span>
-            <textarea
-              value={formData.note}
-              onChange={handleChange('note')}
-              rows={4}
-              placeholder="Ví dụ: Lô demo cho tiểu luận, sản xuất theo quy trình VietGAP."
-              style={{ ...fieldStyle, resize: 'vertical' }}
-            />
-          </label>
-
-          <div
-            style={{
-              background: '#f8fafc',
-              border: '1px solid #e5e7eb',
-              borderRadius: 12,
-              padding: 14,
-            }}
-          >
-            <div style={{ fontWeight: 700, marginBottom: 6 }}>Tóm tắt sẽ lưu</div>
-            <div style={{ color: '#475569', fontSize: 14, lineHeight: 1.5 }}>
-              {formData.name.trim()
-                ? buildDescription()
-                : 'Nhập tên lô để xem mô tả tóm tắt.'}
-            </div>
-          </div>
-
-          {submitError && (
-            <div
-              style={{
-                background: '#fef2f2',
-                color: '#b91c1c',
-                border: '1px solid #fecaca',
-                borderRadius: 10,
-                padding: 12,
-              }}
-            >
-              {submitError}
-            </div>
-          )}
-
-          {submitSuccess && (
-            <div
-              style={{
-                background: '#f0fdf4',
-                color: '#166534',
-                border: '1px solid #bbf7d0',
-                borderRadius: 10,
-                padding: 12,
-              }}
-            >
-              {submitSuccess}
-            </div>
-          )}
-
-          <button
-            type="submit"
-            disabled={submitting}
-            style={{
-              padding: '14px 20px',
-              cursor: submitting ? 'not-allowed' : 'pointer',
-              borderRadius: borderRadius.lg,
-              border: 'none',
-              background: submitting ? colors.neutral[400] : `linear-gradient(135deg, ${colors.primary[600]}, ${colors.primary[800]})`,
-              color: '#fff',
-              fontWeight: 700,
-              fontSize: typography.sizes.base,
-              boxShadow: submitting ? 'none' : '0 4px 14px rgba(22, 101, 52, 0.25)',
-              transition: 'all 0.2s ease',
-            }}
-            onMouseEnter={(e) => {
-              if (!submitting) {
-                e.currentTarget.style.boxShadow = '0 6px 20px rgba(22, 101, 52, 0.35)';
-                e.currentTarget.style.transform = 'translateY(-1px)';
-              }
-            }}
-            onMouseLeave={(e) => {
-              if (!submitting) {
-                e.currentTarget.style.boxShadow = '0 4px 14px rgba(22, 101, 52, 0.25)';
-                e.currentTarget.style.transform = 'translateY(0)';
-              }
-            }}
-          >
-            {submitting ? 'Đang tạo lô...' : 'Tạo lô hàng mới'}
-          </button>
-        </form>
-
-        {products.length === 0 ? (
-          <div
-            style={{
-              textAlign: 'center',
-              padding: '48px 24px',
-              color: '#6b7280',
-              border: '2px dashed #e5e7eb',
-              borderRadius: 12,
-              background: '#fff',
-            }}
-          >
-            <p style={{ fontSize: 18, marginTop: 0 }}>Chưa có lô hàng nào</p>
-            <p style={{ marginBottom: 0 }}>Tạo lô đầu tiên bằng form bên trái.</p>
-          </div>
-        ) : (
-          <div style={{ overflowX: 'auto', borderRadius: borderRadius.xl, border: `1px solid ${colors.neutral[200]}`, boxShadow: shadows.sm }}>
-            <table
-              style={{
-                width: '100%',
-                borderCollapse: 'collapse',
-                backgroundColor: '#fff',
-                overflow: 'hidden',
-              }}
-            >
-              <thead>
-                <tr style={{ backgroundColor: '#f9fafb' }}>
-                  <th style={thStyle}>Tên lô / sản phẩm</th>
-                  <th style={thStyle}>Nhóm</th>
-                  <th style={thStyle}>Mô hình</th>
-                  <th style={thStyle}>Nơi sản xuất</th>
-                  <th style={thStyle}>Ngày bắt đầu</th>
-                  <th style={thStyle}>Trạng thái</th>
-                  <th style={{ ...thStyle, textAlign: 'center' }}>Hành động</th>
-                </tr>
-              </thead>
-              <tbody>
-                {products.map((p, i) => (
-                  <tr
-                    key={p._id}
-                    style={{
-                      borderTop: i > 0 ? `1px solid ${colors.neutral[200]}` : undefined,
-                      backgroundColor: i % 2 === 1 ? '#fafafa' : '#fff',
-                      transition: 'background-color 0.2s ease',
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.backgroundColor = '#f0fdf480';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.backgroundColor = i % 2 === 1 ? '#fafafa' : '#fff';
-                    }}
-                  >
-                    <td style={{ padding: '16px 16px', fontWeight: 600, color: colors.textPrimary }}>{p.name}</td>
-                    <td style={{ padding: '16px 16px', color: colors.textSecondary }}>{p.category}</td>
-                    <td style={{ padding: '16px 16px', color: colors.textSecondary }}>
-                      {p.type === 'Plant' ? '🌱 Trồng trọt' : '🐔 Chăn nuôi'}
-                    </td>
-                    <td style={{ padding: '16px 16px', color: colors.textSecondary }}>{p.origin}</td>
-                    <td style={{ padding: '16px 16px', color: colors.textSecondary }}>
-                      {formatDate(p.cultivation_time)}
-                    </td>
-                    <td style={{ padding: '16px 16px' }}>
-                      <span
-                        style={{
-                          fontSize: typography.sizes.xs,
-                          fontWeight: typography.weights.semibold,
-                          color: statusColors[p.status]?.text || colors.textSecondary,
-                          background: statusColors[p.status]?.bg || colors.neutral[100],
-                          padding: `${spacing[1]} ${spacing[3]}`,
-                          borderRadius: borderRadius.full,
-                          display: 'inline-block',
-                          boxShadow: '0 1px 2px rgba(0,0,0,0.02)',
-                        }}
-                      >
-                        {statusLabel[p.status] || p.status}
-                      </span>
-                    </td>
-                    <td style={{ padding: '16px 16px', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                      <div style={{ display: 'inline-flex', gap: spacing[2], alignItems: 'center', justifyContent: 'center' }}>
-                        <Link
-                          to={`/trace/${p._id}`}
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: 6,
-                            padding: '6px 12px',
-                            borderRadius: borderRadius.full,
-                            border: '1px solid #3b82f6',
-                            background: '#eff6ff',
-                            color: '#1d4ed8',
-                            fontSize: 12,
-                            textDecoration: 'none',
-                            fontWeight: 600,
-                            transition: 'all 0.2s ease',
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.background = '#dbeafe';
-                            e.currentTarget.style.transform = 'translateY(-1px)';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.background = '#eff6ff';
-                            e.currentTarget.style.transform = 'translateY(0)';
-                          }}
-                        >
-                          <EyeIcon />
-                          Xem trace
-                        </Link>
-                        <Link
-                          to={`/add-event?productId=${p._id}`}
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: 6,
-                            padding: '6px 12px',
-                            borderRadius: borderRadius.full,
-                            border: '1px solid #22c55e',
-                            background: '#f0fdf4',
-                            color: '#15803d',
-                            fontSize: 12,
-                            textDecoration: 'none',
-                            fontWeight: 600,
-                            transition: 'all 0.2s ease',
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.background = '#dcfce7';
-                            e.currentTarget.style.transform = 'translateY(-1px)';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.background = '#f0fdf4';
-                            e.currentTarget.style.transform = 'translateY(0)';
-                          }}
-                        >
-                          <PlusCircleIcon />
-                          Ghi sự kiện
-                        </Link>
-                        <button
-                          type="button"
-                          onClick={() => setCameraProduct(p)}
-                          style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: 6,
-                            padding: '6px 12px',
-                            borderRadius: borderRadius.full,
-                            border: '1px solid #f87171',
-                            background: '#fef2f2',
-                            color: '#b91c1c',
-                            fontSize: 12,
-                            fontWeight: 600,
-                            cursor: 'pointer',
-                            transition: 'all 0.2s ease',
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.background = '#fee2e2';
-                            e.currentTarget.style.transform = 'translateY(-1px)';
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.background = '#fef2f2';
-                            e.currentTarget.style.transform = 'translateY(0)';
-                          }}
-                        >
-                          <CameraIcon />
-                          Camera
-                          <span style={{
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            background: '#dc2626',
-                            color: '#fff',
-                            fontSize: 10,
-                            fontWeight: 800,
-                            height: 18,
-                            minWidth: 18,
-                            padding: '0 4px',
-                            borderRadius: 99,
-                            marginLeft: 2,
-                          }}>
-                            {p.live_cameras?.length ?? 0}
-                          </span>
-                        </button>
-                        {canArchiveProduct && (
-                          <button
-                            type="button"
-                            onClick={() => handleArchiveProduct(p)}
-                            style={{
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              gap: 6,
-                              padding: '6px 12px',
-                              borderRadius: borderRadius.full,
-                              border: '1px solid #d1d5db',
-                              background: '#f9fafb',
-                              color: '#4b5563',
-                              fontSize: 12,
-                              fontWeight: 600,
-                              cursor: 'pointer',
-                              transition: 'all 0.2s ease',
-                            }}
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.background = '#f3f4f6';
-                              e.currentTarget.style.transform = 'translateY(-1px)';
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.background = '#f9fafb';
-                              e.currentTarget.style.transform = 'translateY(0)';
-                            }}
-                          >
-                            Lưu trữ
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <aside className="dash-layout__aside">
+          <JourneyCard product={sortedProducts[0]} />
+          <AlertsCard products={products} />
+          <BlockchainCard total={products.length} verified={verifiedCount} />
+        </aside>
       </div>
     </div>
   );

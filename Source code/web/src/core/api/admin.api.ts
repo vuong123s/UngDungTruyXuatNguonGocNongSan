@@ -28,6 +28,7 @@ export interface AdminUser {
   first_name: string;
   last_name: string;
   email: string;
+  avatar?: string;
   phone?: string;
   address?: string;
   role: 'admin' | 'manager' | 'farmer' | 'consumer';

@@ -92,8 +92,8 @@ const CertificationPage: React.FC = () => {
   };
 
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing[6] }}>
+    <div className="feature-page certification-page">
+      <div className="feature-page-heading" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing[6] }}>
         <div>
           <h1 style={{ margin: 0, fontSize: typography.sizes['2xl'], fontWeight: typography.weights.bold }}>
             Quản lý Chứng nhận
@@ -121,7 +121,7 @@ const CertificationPage: React.FC = () => {
       )}
 
       {showForm && (
-        <div style={{ 
+        <div className="feature-form-card" style={{
           background: colors.surface, border: `1px solid ${colors.neutral[200]}`, 
           borderRadius: borderRadius.xl, padding: spacing[6], marginBottom: spacing[6], boxShadow: shadows.sm 
         }}>
@@ -260,7 +260,7 @@ const CertificationPage: React.FC = () => {
       {loading ? (
         <p style={{ color: colors.textSecondary }}>Đang tải...</p>
       ) : certs.length === 0 ? (
-        <div style={{ 
+        <div className="feature-table-card" style={{
           background: colors.surface, border: `1px solid ${colors.neutral[200]}`, 
           borderRadius: borderRadius.xl, padding: spacing[8], textAlign: 'center' 
         }}>

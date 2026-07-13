@@ -127,7 +127,7 @@ const TraceDetailPage: React.FC = () => {
   const certifications = farmingArea?.certifications || [];
 
   return (
-    <div style={{ maxWidth: 1000, margin: '0 auto' }}>
+    <div className="trace-public-page" style={{ maxWidth: 1000, margin: '0 auto' }}>
       {/* Hero Section - Product Info */}
       <div style={{
         background: `linear-gradient(135deg, ${colors.primary[600]} 0%, ${colors.primary[700]} 100%)`,

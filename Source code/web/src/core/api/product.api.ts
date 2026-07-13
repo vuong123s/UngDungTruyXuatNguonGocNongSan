@@ -18,6 +18,7 @@ export interface CreateProductData {
   current_quantity?: number;
   unit?: string;
   farming_area?: string;
+  images?: { path: string; filename: string }[];
   live_cameras?: LiveCamera[];
 }
 
