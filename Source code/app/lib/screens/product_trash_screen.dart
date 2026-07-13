@@ -32,7 +32,7 @@ class _ProductTrashScreenState extends ConsumerState<ProductTrashScreen> {
       final products = await ref.read(batchServiceProvider).getTrashProducts();
       if (mounted) setState(() => _products = products);
     } catch (error) {
-      if (mounted) setState(() => _error = error.toString());
+      if (mounted) setState(() => _error = _friendlyError(error));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -50,7 +50,7 @@ class _ProductTrashScreenState extends ConsumerState<ProductTrashScreen> {
         SnackBar(content: Text('Đã khôi phục "${product.name}".')),
       );
     } catch (error) {
-      if (mounted) setState(() => _error = error.toString());
+      if (mounted) setState(() => _error = _friendlyError(error));
     }
   }
 
@@ -60,7 +60,7 @@ class _ProductTrashScreenState extends ConsumerState<ProductTrashScreen> {
       builder: (context) => AlertDialog(
         title: const Text('Xóa vĩnh viễn?'),
         content: Text(
-          'Chỉ lô chưa có lịch sử liên quan mới được xóa thật. Bạn muốn xóa "${product.name}"?',
+          'Chỉ lô chưa có nhật ký, tồn kho, kiểm nghiệm hoặc dữ liệu chuỗi cung ứng mới được xóa thật. Bạn muốn xóa "${product.name}"?',
         ),
         actions: [
           TextButton(
@@ -86,7 +86,7 @@ class _ProductTrashScreenState extends ConsumerState<ProductTrashScreen> {
         SnackBar(content: Text('Đã xóa vĩnh viễn "${product.name}".')),
       );
     } catch (error) {
-      if (mounted) setState(() => _error = error.toString());
+      if (mounted) setState(() => _error = _friendlyError(error));
     }
   }
 
@@ -272,6 +272,17 @@ class _TrashProductCard extends StatelessWidget {
       ),
     );
   }
+}
+
+String _friendlyError(Object error) {
+  final message = error.toString();
+  if (message.startsWith('Exception: ')) {
+    return message.substring('Exception: '.length);
+  }
+  if (message.startsWith('DioException')) {
+    return 'Không thể xử lý yêu cầu. Vui lòng kiểm tra lại dữ liệu.';
+  }
+  return message;
 }
 
 String _date(DateTime? date) {

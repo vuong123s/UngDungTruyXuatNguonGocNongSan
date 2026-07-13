@@ -7,6 +7,9 @@ const createUserToken = (user: IUser) => ({
   userId: user._id,
   email: user.email,
   name: `${user.first_name} ${user.last_name}`,
+  first_name: user.first_name,
+  last_name: user.last_name,
+  avatar: user.avatar,
   role: user.role,
 });
 

@@ -14,6 +14,7 @@ import SupplyChainRecord from '../models/SupplyChainRecord';
 import InventoryTransaction from '../models/InventoryTransaction';
 
 const oid = (value: string) => new Types.ObjectId(value);
+const DEFAULT_USER_AVATAR = '/uploads/sample-media/default-avatar.svg';
 
 const PRODUCT_NAMES: Record<string, { name: string; category: string; origin: string }> = {
   '6a0fdaad7ecb33512b9d4c7a': { name: 'Xoài Cát Chu', category: 'Trái cây', origin: 'Cái Bè, Tiền Giang' },
@@ -26,6 +27,69 @@ const PRODUCT_NAMES: Record<string, { name: string; category: string; origin: st
   '6a0fdb11559c052f3e2b7bbc': { name: 'Khoai Lang', category: 'Rau củ', origin: 'Phường 8, Đà Lạt, Lâm Đồng' },
   '6a0fdb89559c052f3e2b7c94': { name: 'Rau Mùi', category: 'Rau ăn lá', origin: 'Chợ Lách, Bến Tre' },
   '6a0fdccc559c052f3e2b7e15': { name: 'Rau Dền', category: 'Rau ăn lá', origin: 'Phường 8, Đà Lạt, Lâm Đồng' },
+};
+
+const PRODUCT_PROFILES: Record<
+  string,
+  { batch_code: string; status: 'draft' | 'active' | 'completed' | 'recalled'; cultivation_time: string; harvest_at?: string }
+> = {
+  '6a0fdaad7ecb33512b9d4c7a': {
+    batch_code: 'XM-2606-0001',
+    status: 'completed',
+    cultivation_time: '2026-02-15 đến 2026-06-30',
+    harvest_at: '2026-06-30T01:30:00.000Z',
+  },
+  '6a0fdaad7ecb33512b9d4c7b': {
+    batch_code: 'BU-2605-0002',
+    status: 'active',
+    cultivation_time: '2025-12-20 đến 2026-05-16',
+    harvest_at: '2026-05-16T02:00:00.000Z',
+  },
+  '6a0fdaad7ecb33512b9d4c7c': {
+    batch_code: 'CT-2605-0003',
+    status: 'active',
+    cultivation_time: '2026-03-15 đến 2026-05-28',
+    harvest_at: '2026-05-28T01:00:00.000Z',
+  },
+  '6a0fdaae7ecb33512b9d4c7d': {
+    batch_code: 'XL-2606-0004',
+    status: 'active',
+    cultivation_time: '2026-05-05 đến 2026-06-05',
+    harvest_at: '2026-06-05T00:30:00.000Z',
+  },
+  '6a0fdaae7ecb33512b9d4c7e': {
+    batch_code: 'DL-2607-0005',
+    status: 'active',
+    cultivation_time: '2026-04-10 đến 2026-07-05',
+  },
+  '6a0fdaae7ecb33512b9d4c7f': {
+    batch_code: 'OC-2607-0006',
+    status: 'active',
+    cultivation_time: '2026-04-18 đến 2026-07-10',
+  },
+  '6a0fdaae7ecb33512b9d4c80': {
+    batch_code: 'TG-2606-0007',
+    status: 'completed',
+    cultivation_time: 'Thu gom ngày 2026-06-12',
+    harvest_at: '2026-06-12T01:00:00.000Z',
+  },
+  '6a0fdb11559c052f3e2b7bbc': {
+    batch_code: 'KL-2607-0008',
+    status: 'active',
+    cultivation_time: '2026-05-10 đến 2026-07-20',
+  },
+  '6a0fdb89559c052f3e2b7c94': {
+    batch_code: 'RM-2606-0009',
+    status: 'active',
+    cultivation_time: '2026-05-20 đến 2026-06-25',
+    harvest_at: '2026-06-25T00:45:00.000Z',
+  },
+  '6a0fdccc559c052f3e2b7e15': {
+    batch_code: 'RD-2606-0010',
+    status: 'active',
+    cultivation_time: '2026-05-18 đến 2026-06-28',
+    harvest_at: '2026-06-28T00:45:00.000Z',
+  },
 };
 
 const PRODUCT_INVENTORY: Record<
@@ -100,6 +164,19 @@ const AREA_DATA: Record<string, { name: string; address: string }> = {
   '6a0fdaad7ecb33512b9d4c79': { name: 'Trang trại Chợ Lách', address: 'Chợ Lách, Bến Tre' },
 };
 
+const PRODUCT_FARMING_AREAS: Record<string, string> = {
+  '6a0fdaad7ecb33512b9d4c7a': '6a0fdaac7ecb33512b9d4c77',
+  '6a0fdaad7ecb33512b9d4c7b': '6a0fdaad7ecb33512b9d4c79',
+  '6a0fdaad7ecb33512b9d4c7c': '6a0fdaac7ecb33512b9d4c78',
+  '6a0fdaae7ecb33512b9d4c7d': '6a0fdaac7ecb33512b9d4c78',
+  '6a0fdaae7ecb33512b9d4c7e': '6a0fdaac7ecb33512b9d4c77',
+  '6a0fdaae7ecb33512b9d4c7f': '6a0fdaac7ecb33512b9d4c78',
+  '6a0fdaae7ecb33512b9d4c80': '6a0fdaad7ecb33512b9d4c79',
+  '6a0fdb11559c052f3e2b7bbc': '6a0fdaac7ecb33512b9d4c78',
+  '6a0fdb89559c052f3e2b7c94': '6a0fdaac7ecb33512b9d4c78',
+  '6a0fdccc559c052f3e2b7e15': '6a0fdaac7ecb33512b9d4c78',
+};
+
 const EVENT_DESCRIPTIONS: Record<string, string> = {
   '6a0fda8090c8a58380d6d8d9': 'Thu hoạch lô xoài đợt đầu, tuyển chọn quả đạt tiêu chuẩn.',
   '6a0fda8090c8a58380d6d8da': 'Phân loại và đóng gói bưởi da xanh theo quy cách.',
@@ -128,6 +205,25 @@ const sampleVideo = (filename: string) => ({
   filename,
   mimeType: 'video/mp4',
 });
+
+const PRODUCT_DEFAULT_IMAGES = [
+  { pattern: /xoài|mango/i, filename: 'mango-harvest.png' },
+  { pattern: /bưởi|pomelo/i, filename: 'fruit-packaging.png' },
+  { pattern: /cà chua|tomato/i, filename: 'cherry-tomatoes.png' },
+  { pattern: /xà lách|lettuce/i, filename: 'hydroponic-lettuce.png' },
+  { pattern: /dưa lưới|cantaloupe|melon/i, filename: 'cantaloupe.png' },
+  { pattern: /ớt chuông|bell pepper|pepper/i, filename: 'bell-peppers.png' },
+  { pattern: /trứng|egg/i, filename: 'free-range-eggs.png' },
+  { pattern: /khoai lang|sweet potato/i, filename: 'sweet-potatoes.png' },
+  { pattern: /rau mùi|rau dền|herb|amaranth|coriander/i, filename: 'fresh-herbs-amaranth.png' },
+  { pattern: /rau ăn lá|rau|leaf/i, filename: 'hydroponic-lettuce.png' },
+  { pattern: /trái cây|fruit/i, filename: 'fruit-packaging.png' },
+] as const;
+
+const resolveProductImage = (name = '', category = '') => {
+  const text = `${name} ${category}`;
+  return PRODUCT_DEFAULT_IMAGES.find((item) => item.pattern.test(text))?.filename || 'fruit-packaging.png';
+};
 
 const EVENT_MEDIA: Record<
   string,
@@ -296,10 +392,39 @@ async function repairReferences(fallbackUserId: Types.ObjectId) {
 
 async function normalizeBaseData(fallbackUserId: Types.ObjectId) {
   for (const [id, data] of Object.entries(AREA_DATA)) {
-    await FarmingArea.updateOne({ _id: oid(id) }, { $set: data });
+    await FarmingArea.findOneAndUpdate(
+      { _id: oid(id) },
+      {
+        $set: {
+          ...data,
+          owner: fallbackUserId,
+          images: [],
+          certifications: [],
+          status: 'active',
+        },
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true, runValidators: true }
+    );
   }
   for (const [id, data] of Object.entries(PRODUCT_NAMES)) {
-    await Product.updateOne({ _id: oid(id) }, { $set: data });
+    const farmingArea = PRODUCT_FARMING_AREAS[id];
+    const profile = PRODUCT_PROFILES[id];
+    await Product.updateOne(
+      { _id: oid(id) },
+      {
+        $set: {
+          ...data,
+          ...(profile
+            ? {
+                batch_code: profile.batch_code,
+                status: profile.status,
+                cultivation_time: profile.cultivation_time,
+              }
+            : {}),
+          ...(farmingArea ? { farming_area: oid(farmingArea) } : {}),
+        },
+      }
+    );
   }
   for (const [id, description] of Object.entries(EVENT_DESCRIPTIONS)) {
     await TraceEvent.updateOne({ _id: oid(id) }, { $set: { description } });
@@ -310,15 +435,20 @@ async function normalizeBaseData(fallbackUserId: Types.ObjectId) {
 
   await User.updateOne(
     { email: 'admin@gmail.com' },
-    { $set: { first_name: 'Quản trị', last_name: 'AgriTrace', isActive: true } }
+    { $set: { first_name: 'Quản trị', last_name: 'AgriTrace', avatar: DEFAULT_USER_AVATAR, isActive: true } }
   );
   await User.updateOne(
     { email: 'farmer@gmail.com' },
-    { $set: { first_name: 'Trần', last_name: 'Thị Nông', isActive: true } }
+    { $set: { first_name: 'Trần', last_name: 'Thị Nông', avatar: DEFAULT_USER_AVATAR, isActive: true } }
   );
   await User.updateOne(
     { email: 'farmerb@gmail.com' },
-    { $set: { first_name: 'Nguyễn', last_name: 'Văn Vườn', isActive: true } }
+    { $set: { first_name: 'Nguyễn', last_name: 'Văn Vườn', avatar: DEFAULT_USER_AVATAR, isActive: true } }
+  );
+
+  await User.updateMany(
+    { $or: [{ avatar: { $exists: false } }, { avatar: '' }, { avatar: null }] },
+    { $set: { avatar: DEFAULT_USER_AVATAR } }
   );
 
   await Certification.updateOne(
@@ -350,6 +480,333 @@ async function normalizeBaseData(fallbackUserId: Types.ObjectId) {
   );
 
   return repairReferences(fallbackUserId);
+}
+
+async function ensureHarvestEvents(createdBy: Types.ObjectId) {
+  let harvestEventsUpserted = 0;
+
+  for (const [id, profile] of Object.entries(PRODUCT_PROFILES)) {
+    if (!profile.harvest_at) continue;
+
+    const product = await Product.findById(oid(id)).select('_id name');
+    if (!product) continue;
+
+    const harvestAt = new Date(profile.harvest_at);
+    const result = await TraceEvent.findOneAndUpdate(
+      { product: product._id, 'details.seed_key': `harvest-${profile.batch_code}` },
+      {
+        $set: {
+          product: product._id,
+          batchId: product._id.toString(),
+          eventType: 'HARVESTING' as ActionType,
+          description: `Thu hoạch ${product.name} theo lịch lô ${profile.batch_code}.`,
+          details: {
+            seed_key: `harvest-${profile.batch_code}`,
+            source: 'normalized-demo-data',
+            batch_code: profile.batch_code,
+            harvestDate: profile.harvest_at,
+            qualityGrade: 'Loại A',
+          },
+          images: [sampleImage(resolveProductImage(product.name, ''))],
+          videos: [],
+          recorded_by: createdBy,
+          onChainStatus: 'skipped',
+          dataHashVersion: 'v2',
+          createdAt: harvestAt,
+          updatedAt: harvestAt,
+        },
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true, runValidators: true, timestamps: false }
+    );
+    if (result) harvestEventsUpserted += 1;
+  }
+
+  return { harvestEventsUpserted };
+}
+
+async function seedFarmingAreaDemo(createdBy: Types.ObjectId) {
+  const areas = [
+    {
+      _id: oid('6b1000000000000000000001'),
+      name: 'Vườn xoài VietGAP Cái Bè - Khu A',
+      address: 'Ấp Mỹ Lợi, xã Hòa Khánh, Cái Bè, Tiền Giang',
+      coordinates: { lat: 10.3527, lng: 105.9462 },
+      area_size: 3.8,
+      description:
+        'Vườn xoài cát chu canh tác theo VietGAP, có hệ thống tưới nhỏ giọt và nhật ký chăm sóc định kỳ.',
+      images: [sampleImage('mango-harvest.png')],
+    },
+    {
+      _id: oid('6b1000000000000000000002'),
+      name: 'Nhà kính rau thủy canh Đà Lạt - Dãy B',
+      address: 'Phường 8, Đà Lạt, Lâm Đồng',
+      coordinates: { lat: 11.9678, lng: 108.4426 },
+      area_size: 1.2,
+      description:
+        'Khu nhà kính trồng xà lách, rau mùi và rau ăn lá bằng hệ thống thủy canh tuần hoàn.',
+      images: [sampleImage('hydroponic-lettuce.png')],
+    },
+    {
+      _id: oid('6b1000000000000000000003'),
+      name: 'Trang trại bưởi hữu cơ Chợ Lách',
+      address: 'Chợ Lách, Bến Tre',
+      coordinates: { lat: 10.2455, lng: 106.1372 },
+      area_size: 4.6,
+      description:
+        'Vườn bưởi da xanh theo hướng hữu cơ, ưu tiên phân compost và bẫy sinh học.',
+      images: [sampleImage('fruit-packaging.png')],
+    },
+    {
+      _id: oid('6b1000000000000000000004'),
+      name: 'Khu rau màu ven sông Cần Thơ',
+      address: 'Cái Răng, Cần Thơ',
+      coordinates: { lat: 10.0078, lng: 105.7431 },
+      area_size: 2.4,
+      description:
+        'Khu canh tác rau củ ngắn ngày, phù hợp demo kiểm nghiệm, tồn kho và vận chuyển nội vùng.',
+      images: [sampleImage('hydroponic-lettuce.png')],
+    },
+  ];
+
+  for (const area of areas) {
+    await FarmingArea.findOneAndUpdate(
+      { _id: area._id },
+      {
+        $set: {
+          ...area,
+          owner: createdBy,
+          certifications: [],
+          status: 'active',
+        },
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true, runValidators: true }
+    );
+  }
+
+  const products = [
+    {
+      _id: oid('6b2000000000000000000001'),
+      batch_code: 'DEMO-MANGO-A-2026',
+      name: 'Xoài Cát Chu - Khu A tháng 6',
+      category: 'Trái cây',
+      type: 'Plant',
+      description: 'Lô xoài cát chu tuyển chọn từ khu A, trái đồng đều, chuẩn đóng thùng 5kg.',
+      origin: 'Cái Bè, Tiền Giang',
+      cultivation_time: '2026-02-15 đến 2026-06-10',
+      farming_area: oid('6b1000000000000000000001'),
+      initial_quantity: 980,
+      current_quantity: 760,
+      unit: 'kg',
+      images: [sampleImage('mango-harvest.png')],
+      live_cameras: [
+        {
+          name: 'Camera vườn xoài khu A',
+          stream_url: 'https://www.youtube.com/watch?v=5qap5aO4i9A',
+          location: 'Cổng vườn khu A',
+          is_active: true,
+        },
+      ],
+    },
+    {
+      _id: oid('6b2000000000000000000002'),
+      batch_code: 'DEMO-LETTUCE-B-2026',
+      name: 'Xà Lách Romaine thủy canh',
+      category: 'Rau ăn lá',
+      type: 'Plant',
+      description: 'Lô xà lách romaine thu từ hệ thống thủy canh tuần hoàn, đóng túi 500g.',
+      origin: 'Đà Lạt, Lâm Đồng',
+      cultivation_time: '2026-05-05 đến 2026-06-05',
+      farming_area: oid('6b1000000000000000000002'),
+      initial_quantity: 260,
+      current_quantity: 210,
+      unit: 'kg',
+      images: [sampleImage('hydroponic-lettuce.png')],
+      live_cameras: [
+        {
+          name: 'Camera nhà kính dãy B',
+          stream_url: 'https://www.youtube.com/watch?v=21X5lGlDOfg',
+          location: 'Dãy B - giàn thủy canh',
+          is_active: true,
+        },
+      ],
+    },
+    {
+      _id: oid('6b2000000000000000000003'),
+      batch_code: 'DEMO-POMELO-C-2026',
+      name: 'Bưởi Da Xanh hữu cơ',
+      category: 'Trái cây',
+      type: 'Plant',
+      description: 'Lô bưởi da xanh thu hoạch chọn lọc, không xử lý hóa chất sau thu hoạch.',
+      origin: 'Chợ Lách, Bến Tre',
+      cultivation_time: '2025-12-20 đến 2026-06-12',
+      farming_area: oid('6b1000000000000000000003'),
+      initial_quantity: 720,
+      current_quantity: 620,
+      unit: 'kg',
+      images: [sampleImage('fruit-packaging.png')],
+      live_cameras: [],
+    },
+    {
+      _id: oid('6b2000000000000000000004'),
+      batch_code: 'DEMO-CUCUMBER-D-2026',
+      name: 'Dưa leo baby Cần Thơ',
+      category: 'Rau quả',
+      type: 'Plant',
+      description: 'Dưa leo baby thu trong ngày, phân loại theo kích cỡ trước khi nhập kho.',
+      origin: 'Cái Răng, Cần Thơ',
+      cultivation_time: '2026-05-01 đến 2026-06-01',
+      farming_area: oid('6b1000000000000000000004'),
+      initial_quantity: 430,
+      current_quantity: 390,
+      unit: 'kg',
+      images: [sampleImage('hydroponic-lettuce.png')],
+      live_cameras: [],
+    },
+  ] as const;
+
+  for (const product of products) {
+    await Product.findOneAndUpdate(
+      { _id: product._id },
+      {
+        $set: {
+          ...product,
+          status: 'active',
+          created_by: createdBy,
+          isDeleted: false,
+        },
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true, runValidators: true }
+    );
+
+    await InventoryTransaction.findOneAndUpdate(
+      { 'metadata.seed_key': `area-demo-${product.batch_code}-initial` },
+      {
+        $set: {
+          product: product._id,
+          type: 'INITIAL',
+          quantity: product.initial_quantity,
+          unit: product.unit,
+          balance_before: 0,
+          balance_after: product.initial_quantity,
+          related_products: [],
+          note: `Khởi tạo tồn kho cho ${product.name}`,
+          occurred_at: new Date('2026-06-01T01:00:00.000Z'),
+          metadata: {
+            seed_key: `area-demo-${product.batch_code}-initial`,
+            source: 'area-demo-data',
+          },
+          created_by: createdBy,
+        },
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true, runValidators: true }
+    );
+  }
+
+  const traceEvents = [
+    {
+      key: 'area-demo-mango-fertilizing',
+      product: oid('6b2000000000000000000001'),
+      eventType: 'FERTILIZING' as ActionType,
+      description: 'Bón phân hữu cơ hoai mục kết hợp kali trước thu hoạch 30 ngày.',
+      details: { fertilizer: 'Compost + Kali', amount: 120, unit: 'kg', weather: 'Nắng nhẹ' },
+      images: [sampleImage('mango-harvest.png')],
+    },
+    {
+      key: 'area-demo-mango-harvest',
+      product: oid('6b2000000000000000000001'),
+      eventType: 'HARVESTING' as ActionType,
+      description: 'Thu hoạch xoài đạt độ chín thương phẩm, loại bỏ trái dập và trái sâu.',
+      details: { harvestTeam: 'Tổ thu hoạch Cái Bè 02', gradeA: 82, unit: '%' },
+      images: [sampleImage('mango-harvest.png')],
+    },
+    {
+      key: 'area-demo-lettuce-water',
+      product: oid('6b2000000000000000000002'),
+      eventType: 'WATERING' as ActionType,
+      description: 'Kiểm tra pH/EC dung dịch thủy canh và bổ sung nước sạch.',
+      details: { ph: 6.2, ec: 1.55, waterVolume: 65, waterUnit: 'lít' },
+      images: [sampleImage('hydroponic-lettuce.png')],
+    },
+    {
+      key: 'area-demo-pomelo-pest',
+      product: oid('6b2000000000000000000003'),
+      eventType: 'PEST_CONTROL' as ActionType,
+      description: 'Đặt bẫy sinh học ruồi vàng và bao trái bưởi trước giai đoạn lớn nhanh.',
+      details: { pestName: 'Ruồi vàng', treatment: 'Bẫy sinh học + bao trái', chemicalFree: true },
+      images: [sampleImage('fruit-packaging.png')],
+    },
+    {
+      key: 'area-demo-cucumber-packaging',
+      product: oid('6b2000000000000000000004'),
+      eventType: 'PACKAGING' as ActionType,
+      description: 'Rửa sạch, làm ráo và đóng khay dưa leo baby theo quy cách 1kg.',
+      details: { packageType: 'Khay 1 kg', packageCount: 390, qcStaff: 'QC-CT-01' },
+      images: [sampleImage('hydroponic-lettuce.png')],
+    },
+  ];
+
+  for (const event of traceEvents) {
+    await TraceEvent.findOneAndUpdate(
+      { product: event.product, 'details.seed_key': event.key },
+      {
+        $set: {
+          product: event.product,
+          batchId: event.product.toString(),
+          eventType: event.eventType,
+          description: event.description,
+          details: {
+            ...event.details,
+            seed_key: event.key,
+            source: 'area-demo-data',
+          },
+          images: event.images,
+          videos: [],
+          recorded_by: createdBy,
+          onChainStatus: 'skipped',
+          dataHashVersion: 'v2',
+        },
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true, runValidators: true }
+    );
+  }
+
+  return {
+    farmingAreasUpserted: areas.length,
+    productsUpserted: products.length,
+    traceEventsUpserted: traceEvents.length,
+  };
+}
+
+async function attachProductsToExistingFarmingAreas() {
+  const fallbackAreaId = oid('6a0fdaac7ecb33512b9d4c77');
+  const rules = [
+    { pattern: /Đà Lạt|Lâm Đồng|Phường 8/i, areaId: oid('6a0fdaac7ecb33512b9d4c78') },
+    { pattern: /Chợ Lách|Bến Tre/i, areaId: oid('6a0fdaad7ecb33512b9d4c79') },
+    { pattern: /Cần Thơ|Cái Răng/i, areaId: oid('6b1000000000000000000004') },
+    { pattern: /Cái Bè|Tiền Giang/i, areaId: fallbackAreaId },
+  ];
+
+  const products = await Product.find({
+    $or: [{ farming_area: { $exists: false } }, { farming_area: null }],
+  }).select('_id origin');
+
+  let productsAttached = 0;
+  for (const product of products) {
+    const origin = product.origin || '';
+    const matched = rules.find((rule) => rule.pattern.test(origin));
+    const areaId = matched?.areaId || fallbackAreaId;
+    const areaExists = await FarmingArea.exists({ _id: areaId });
+    if (!areaExists) continue;
+
+    const result = await Product.updateOne(
+      { _id: product._id },
+      { $set: { farming_area: areaId } },
+      { runValidators: true }
+    );
+    productsAttached += result.modifiedCount;
+  }
+
+  return { productsAttached };
 }
 
 async function seedTraceEventMedia(createdBy: Types.ObjectId) {
@@ -630,18 +1087,44 @@ async function normalizeInventory(createdBy: Types.ObjectId) {
   return { productsUpdated, transactionsUpserted };
 }
 
+async function ensureProductImages() {
+  const products = await Product.find({
+    $or: [
+      { images: { $exists: false } },
+      { images: { $size: 0 } },
+    ],
+  }).select('_id name category');
+
+  let productsUpdated = 0;
+  for (const product of products) {
+    const filename = resolveProductImage(product.name, product.category);
+    const result = await Product.updateOne(
+      { _id: product._id },
+      { $set: { images: [sampleImage(filename)] } },
+      { runValidators: true }
+    );
+    productsUpdated += result.modifiedCount;
+  }
+
+  return { productsUpdated };
+}
+
 async function main() {
   await connectDB(env.DB_URI);
   const fallbackUser = await User.findOne({ role: 'admin', isActive: true }).sort({ createdAt: 1 });
   if (!fallbackUser) throw new Error('Không tìm thấy tài khoản quản trị đang hoạt động.');
 
   const repairedReferences = await normalizeBaseData(fallbackUser._id);
+  const harvestEvents = await ensureHarvestEvents(fallbackUser._id);
+  const farmingAreaDemo = await seedFarmingAreaDemo(fallbackUser._id);
+  const productAreaLinks = await attachProductsToExistingFarmingAreas();
   const organizations = await seedOrganizations(fallbackUser._id);
   await seedSupplyChain(fallbackUser._id, organizations);
   const traceEventMedia = await seedTraceEventMedia(fallbackUser._id);
   await seedQualityInspections(fallbackUser._id);
   const disease = await seedDiseaseDetections(fallbackUser._id);
   const inventory = await normalizeInventory(fallbackUser._id);
+  const productImages = await ensureProductImages();
 
   const counts = {
     users: await User.countDocuments(),
@@ -656,7 +1139,7 @@ async function main() {
     inventoryTransactions: await InventoryTransaction.countDocuments(),
   };
 
-  console.log(JSON.stringify({ success: true, repairedReferences, traceEventMedia, disease, inventory, counts }, null, 2));
+  console.log(JSON.stringify({ success: true, repairedReferences, harvestEvents, farmingAreaDemo, productAreaLinks, traceEventMedia, disease, inventory, productImages, counts }, null, 2));
 }
 
 main()

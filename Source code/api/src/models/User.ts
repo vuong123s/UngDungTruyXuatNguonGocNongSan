@@ -7,6 +7,7 @@ export interface IUser extends Document {
   last_name: string;
   email: string;
   password: string;
+  avatar?: string;
   phone?: string;
   address?: string;
   role: 'admin' | 'manager' | 'farmer' | 'consumer';
@@ -41,6 +42,11 @@ const userSchema = new Schema<IUser>(
       type: String,
       required: [true, 'Vui l?ng nh?p m?t kh?u'],
       minlength: [6, 'M?t kh?u t?i thi?u 6 k? t?'],
+    },
+    avatar: {
+      type: String,
+      trim: true,
+      default: '/uploads/sample-media/default-avatar.svg',
     },
     phone: {
       type: String,

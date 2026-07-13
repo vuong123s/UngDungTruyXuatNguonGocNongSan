@@ -85,10 +85,12 @@ const pickProductUpdate = (
   data: Partial<{
     name: string;
     category: string;
+    type: 'Plant' | 'Animal';
     description: string;
     origin: string;
     cultivation_time: string;
     farming_area: string;
+    images: { path: string; filename: string }[];
     live_cameras: ILiveCamera[];
   }>
 ) => {
@@ -96,10 +98,12 @@ const pickProductUpdate = (
   const keys = [
     'name',
     'category',
+    'type',
     'description',
     'origin',
     'cultivation_time',
     'farming_area',
+    'images',
     'live_cameras',
   ] as const;
 
@@ -210,18 +214,20 @@ export const createProduct = async (
   if (!data.name || !data.category || !data.type || !data.description) {
     throw new BadRequestError('Vui lòng điền đầy đủ thông tin sản phẩm');
   }
+  if (!data.farming_area) {
+    throw new BadRequestError('Vui lòng chọn vùng trồng từ danh sách có sẵn');
+  }
 
   const farmingArea = await assertFarmingAreaAccess(
     data.farming_area,
     userId,
     userRole
   );
-
-  // Auto-fill origin from farming area if not provided
-  let origin = data.origin;
-  if (farmingArea && !origin) {
-    origin = farmingArea.address;
+  if (!farmingArea) {
+    throw new BadRequestError('Vui lòng chọn vùng trồng từ danh sách có sẵn');
   }
+
+  const origin = farmingArea.address;
 
   const initialQuantity = Number(data.initial_quantity ?? data.current_quantity ?? 0);
   if (!Number.isFinite(initialQuantity) || initialQuantity < 0) {
@@ -294,6 +300,7 @@ export const updateProduct = async (
   data: Partial<{
     name: string;
     category: string;
+    type: 'Plant' | 'Animal';
     description: string;
     origin: string;
     cultivation_time: string;
@@ -302,6 +309,7 @@ export const updateProduct = async (
     unit: string;
     status: string;
     farming_area: string;
+    images: { path: string; filename: string }[];
     live_cameras: ILiveCamera[];
   }>,
   userId: string,
@@ -317,7 +325,7 @@ export const updateProduct = async (
     throw new UnauthorizedError('Bạn chỉ được chỉnh sửa lô do mình quản lý');
   }
 
-  await assertFarmingAreaAccess(data.farming_area, userId, userRole);
+  const farmingArea = await assertFarmingAreaAccess(data.farming_area, userId, userRole);
 
   if (
     'initial_quantity' in data ||
@@ -336,6 +344,9 @@ export const updateProduct = async (
   }
   
   const safeData = pickProductUpdate(data);
+  if (farmingArea) {
+    safeData.origin = farmingArea.address;
+  }
   const product = await Product.findOneAndUpdate({ _id: productId, ...activeProductQuery }, safeData, {
     new: true,
     runValidators: true,

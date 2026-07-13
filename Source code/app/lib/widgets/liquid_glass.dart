@@ -44,7 +44,7 @@ class GlassPageBackground extends StatelessWidget {
               colors: [Color(0x55F3D89E), Color(0x00F3D89E)],
             ),
           ),
-          child,
+          Positioned.fill(child: child),
         ],
       ),
     );

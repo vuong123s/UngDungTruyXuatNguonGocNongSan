@@ -124,3 +124,13 @@ export const batchExistsOnChain = async (batchId: string): Promise<boolean> => {
   const contract = getReadonlyContract();
   return contract.batchExists(batchId);
 };
+
+export const assertContractDeployed = async (): Promise<void> => {
+  const contract = getReadonlyContract();
+  const code = await contract.runner?.provider?.getCode(await contract.getAddress());
+  if (!code || code === '0x') {
+    throw new Error(
+      'Không tìm thấy smart contract tại CONTRACT_ADDRESS. Hãy bật/deploy lại blockchain local và restart API.'
+    );
+  }
+};

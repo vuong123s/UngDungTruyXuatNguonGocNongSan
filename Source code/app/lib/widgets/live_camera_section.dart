@@ -3,6 +3,7 @@ import 'package:app/models/live_camera.dart';
 import 'package:app/widgets/live_stream_embed.dart';
 import 'package:app/widgets/liquid_glass.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
@@ -17,6 +18,7 @@ class LiveCameraSection extends StatefulWidget {
 
 class _LiveCameraSectionState extends State<LiveCameraSection> {
   int _selectedIndex = 0;
+  final ScrollController _cameraListController = ScrollController();
   VideoPlayerController? _controller;
   String? _error;
 
@@ -101,6 +103,7 @@ class _LiveCameraSectionState extends State<LiveCameraSection> {
 
   @override
   void dispose() {
+    _cameraListController.dispose();
     _controller?.dispose();
     super.dispose();
   }
@@ -197,75 +200,94 @@ class _LiveCameraSectionState extends State<LiveCameraSection> {
               const SizedBox(height: 14),
               SizedBox(
                 height: 92,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: widget.cameras.length,
-                  separatorBuilder: (_, _) => const SizedBox(width: 10),
-                  itemBuilder: (context, index) {
-                    final item = widget.cameras[index];
-                    final selected = index == _selectedIndex;
+                child: ScrollConfiguration(
+                  behavior: const MaterialScrollBehavior().copyWith(
+                    dragDevices: {
+                      PointerDeviceKind.touch,
+                      PointerDeviceKind.mouse,
+                      PointerDeviceKind.trackpad,
+                      PointerDeviceKind.stylus,
+                    },
+                  ),
+                  child: Scrollbar(
+                    controller: _cameraListController,
+                    thumbVisibility: true,
+                    trackVisibility: true,
+                    child: ListView.separated(
+                      controller: _cameraListController,
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.only(bottom: 10),
+                      physics: const BouncingScrollPhysics(),
+                      itemCount: widget.cameras.length,
+                      separatorBuilder: (context, index) =>
+                          const SizedBox(width: 10),
+                      itemBuilder: (context, index) {
+                        final item = widget.cameras[index];
+                        final selected = index == _selectedIndex;
 
-                    return InkWell(
-                      borderRadius: BorderRadius.circular(18),
-                      onTap: () => _selectCamera(index),
-                      child: GlassPanel(
-                        radius: 18,
-                        padding: const EdgeInsets.all(14),
-                        colors: selected
-                            ? [
-                                AppColors.pine.withValues(alpha: 0.18),
-                                Colors.white.withValues(alpha: 0.24),
-                              ]
-                            : [
-                                Colors.white.withValues(alpha: 0.34),
-                                Colors.white.withValues(alpha: 0.16),
-                              ],
-                        child: SizedBox(
-                          width: 160,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
+                        return InkWell(
+                          borderRadius: BorderRadius.circular(18),
+                          onTap: () => _selectCamera(index),
+                          child: GlassPanel(
+                            radius: 18,
+                            padding: const EdgeInsets.all(14),
+                            colors: selected
+                                ? [
+                                    AppColors.pine.withValues(alpha: 0.18),
+                                    Colors.white.withValues(alpha: 0.24),
+                                  ]
+                                : [
+                                    Colors.white.withValues(alpha: 0.34),
+                                    Colors.white.withValues(alpha: 0.16),
+                                  ],
+                            child: SizedBox(
+                              width: 160,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Container(
-                                    width: 8,
-                                    height: 8,
-                                    decoration: const BoxDecoration(
-                                      color: Colors.red,
-                                      shape: BoxShape.circle,
-                                    ),
+                                  Row(
+                                    children: [
+                                      Container(
+                                        width: 8,
+                                        height: 8,
+                                        decoration: const BoxDecoration(
+                                          color: Colors.red,
+                                          shape: BoxShape.circle,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 6),
+                                      const Text(
+                                        'LIVE',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 11,
+                                          color: AppColors.danger,
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                  const SizedBox(width: 6),
-                                  const Text(
-                                    'LIVE',
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    item.name,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
                                     style: TextStyle(
-                                      fontWeight: FontWeight.w800,
-                                      fontSize: 11,
-                                      color: AppColors.danger,
+                                      fontWeight: selected
+                                          ? FontWeight.w800
+                                          : FontWeight.w700,
+                                      color: AppColors.ink,
                                     ),
                                   ),
                                 ],
                               ),
-                              const SizedBox(height: 8),
-                              Text(
-                                item.name,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontWeight: selected
-                                      ? FontWeight.w800
-                                      : FontWeight.w700,
-                                  color: AppColors.ink,
-                                ),
-                              ),
-                            ],
+                            ),
                           ),
-                        ),
-                      ),
-                    );
-                  },
+                        );
+                      },
+                    ),
+                  ),
                 ),
-              ),
+                      ),
             ],
           ),
         ),

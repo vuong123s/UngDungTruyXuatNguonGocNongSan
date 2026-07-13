@@ -1,9 +1,12 @@
+// ignore_for_file: unused_element, unused_element_parameter, unnecessary_underscores
+
 import 'package:app/core/api_client.dart';
 import 'package:app/core/router.dart';
 import 'package:app/core/theme.dart';
 import 'package:app/models/batch.dart';
 import 'package:app/providers/providers.dart';
 import 'package:app/widgets/liquid_glass.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -32,20 +35,31 @@ class _FarmerDashboardScreenState extends ConsumerState<FarmerDashboardScreen> {
     final role =
         (authData?['user']?['role'] ?? authData?['role'] ?? '').toString();
 
-    return Scaffold(
-      body: GlassPageBackground(
-        child: SafeArea(
-          child: batchesAsync.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
+    return GlassPageBackground(
+      child: SafeArea(
+        child: batchesAsync.when(
+            loading: () => _DashboardLoading(
+              userName: 'Nguyễn Văn An',
+              roleLabel: _roleLabel(role),
+              location: 'Cái Bè, Tiền Giang',
+              controller: _searchController,
+              onChanged: (value) => setState(() => _searchQuery = value),
+              onScan: () => Navigator.pushNamed(context, AppRouter.scanner),
+            ),
             error: (error, _) => _ErrorState(
               message: 'Không tải được danh sách lô nông sản.\n$error',
               onRetry: () => ref.invalidate(batchListProvider),
             ),
             data: (batches) {
               final normalizedQuery = _searchQuery.trim().toLowerCase();
+              final activeBatches = batches
+                  .where((batch) =>
+                      batch.status != 'completed' &&
+                      batch.currentQuantity > 0)
+                  .toList();
               final displayedBatches = normalizedQuery.isEmpty
-                  ? batches
-                  : batches.where((batch) {
+                  ? activeBatches
+                  : activeBatches.where((batch) {
                       final haystack = [
                         batch.batchId,
                         batch.productName,
@@ -56,255 +70,153 @@ class _FarmerDashboardScreenState extends ConsumerState<FarmerDashboardScreen> {
                       return haystack.contains(normalizedQuery);
                     }).toList();
 
-              final confirmedCount = batches
+              final inventoryTotal = activeBatches.fold<double>(
+                0,
+                (sum, batch) => sum + batch.currentQuantity,
+              );
+              final newJournalCount = activeBatches
                   .expand((batch) => batch.events)
-                  .where((event) => event.onChainStatus == 'confirmed')
+                  .where((event) =>
+                      DateTime.now().difference(event.createdAt).inDays <= 7)
                   .length;
-              final mediaCount = batches
-                  .expand((batch) => batch.events)
-                  .fold<int>(
-                    0,
-                    (sum, event) =>
-                        sum + event.imageUrls.length + event.videoUrls.length,
-                  );
+              final warningCount = activeBatches.where((batch) {
+                if (batch.status == 'recalled') return true;
+                if (batch.initialQuantity <= 0) return false;
+                return batch.currentQuantity / batch.initialQuantity < 0.25;
+              }).length;
               final canDeleteProduct = role == 'admin';
+              final userMap = authData?['user'] is Map<String, dynamic>
+                  ? authData!['user'] as Map<String, dynamic>
+                  : authData;
+              final userName =
+                  (userMap?['name'] ??
+                          [
+                            userMap?['first_name'],
+                            userMap?['last_name'],
+                          ].whereType<Object>().join(' ') ??
+                          'Nguyễn Văn An')
+                      .toString()
+                      .trim();
+              final userRole = _roleLabel(role);
+              final location = activeBatches
+                  .map((batch) => batch.origin)
+                  .firstWhere((origin) => origin.trim().isNotEmpty,
+                      orElse: () => 'Cái Bè, Tiền Giang');
 
               return RefreshIndicator(
                 onRefresh: () async => ref.invalidate(batchListProvider),
                 child: ListView(
                   physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(20, 14, 20, 118),
+                  padding: const EdgeInsets.fromLTRB(0, 0, 0, 104),
                   children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Text(
-                                'Xin chào,',
-                                style: TextStyle(
-                                  color: AppColors.muted,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                (authData?['user']?['name'] ??
-                                        authData?['name'] ??
-                                        'Người vận hành')
-                                    .toString(),
-                                style: Theme.of(
-                                  context,
-                                ).textTheme.headlineMedium,
-                              ),
-                            ],
-                          ),
-                        ),
-                        _NotificationBellButton(),
-                        const SizedBox(width: 10),
-                        InkWell(
-                          borderRadius: BorderRadius.circular(18),
-                          onTap: () {
-                            final container = ProviderScope.containerOf(
-                              context,
-                            );
-                            Navigator.pushNamedAndRemoveUntil(
-                              context,
-                              AppRouter.home,
-                              (_) => false,
-                            );
-                            Future.microtask(() {
-                              container.read(authStateProvider.notifier).state =
-                                  null;
-                              ApiClient.instance.setToken(null);
-                            });
-                          },
-                          child: const GlassIconCapsule(
-                            icon: Icons.logout_rounded,
-                            color: AppColors.ink,
-                          ),
-                        ),
-                      ],
+                    _DashboardHero(
+                      userName: userName.isEmpty ? 'Nguyễn Văn An' : userName,
+                      roleLabel: userRole,
+                      location: location,
+                      warningCount: warningCount,
+                      onLogout: () {
+                        final container = ProviderScope.containerOf(context);
+                        Navigator.pushNamedAndRemoveUntil(
+                          context,
+                          AppRouter.home,
+                          (_) => false,
+                        );
+                        Future.microtask(() {
+                          container.read(authStateProvider.notifier).state =
+                              null;
+                          ApiClient.instance.setToken(null);
+                        });
+                      },
+                      controller: _searchController,
+                      onChanged: (value) => setState(() => _searchQuery = value),
+                      onClear: _searchQuery.trim().isEmpty
+                          ? null
+                          : () {
+                              _searchController.clear();
+                              setState(() => _searchQuery = '');
+                            },
+                      onScan: () => Navigator.pushNamed(context, AppRouter.scanner),
                     ),
-                    const SizedBox(height: 18),
-                    GlassPanel(
-                      padding: const EdgeInsets.all(0),
-                      colors: [
-                        Colors.white.withValues(alpha: 0.66),
-                        const Color(0xBDE4F2D8),
-                      ],
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(28),
-                        child: Container(
-                          decoration: const BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [Color(0xFF2A7F45), Color(0xFF5AA265)],
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 18),
+                      child: _TodayOverviewCard(
+                        batchCount: batches.length,
+                        inventoryTotal: inventoryTotal,
+                        newJournalCount: newJournalCount,
+                        warningCount: warningCount,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 18),
+                      child: Text(
+                        'Thao tác nhanh',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.w900,
+                              color: AppColors.forest,
+                              fontSize: 18,
                             ),
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.all(22),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const Text(
-                                  'Quản lý lô nông sản',
-                                  style: TextStyle(
-                                    color: Color(0xFFEAF8EE),
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                const SizedBox(height: 10),
-                                Text(
-                                  'Theo dõi danh sách lô, xem lịch sử truy xuất và cập nhật từng công đoạn sản xuất.',
-                                  style: Theme.of(context)
-                                      .textTheme
-                                      .headlineSmall
-                                      ?.copyWith(
-                                        fontSize: 24,
-                                        color: Colors.white,
-                                      ),
-                                ),
-                                const SizedBox(height: 16),
-                                Wrap(
-                                  spacing: 10,
-                                  runSpacing: 10,
-                                  children: [
-                                    _MetricTile(
-                                      value: '${batches.length}',
-                                      label: 'Lô đang theo dõi',
-                                      icon: Icons.inventory_2_rounded,
-                                    ),
-                                    _MetricTile(
-                                      value: '$confirmedCount',
-                                      label: 'Mốc đã xác nhận',
-                                      icon: Icons.verified_rounded,
-                                    ),
-                                    _MetricTile(
-                                      value: '$mediaCount',
-                                      label: 'Media minh chứng',
-                                      icon: Icons.photo_library_rounded,
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            ),
-                          ),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Padding(
+                      padding: const EdgeInsets.only(left: 18),
+                      child: _QuickActionsGrid(
+                        actions: _buildQuickActions(
+                          context,
+                          onInventoryTap: () => ref.invalidate(batchListProvider),
                         ),
                       ),
                     ),
                     const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _QuickActionCard(
-                            icon: Icons.add_circle_outline_rounded,
-                            title: 'Thêm nhật ký',
-                            subtitle: 'Ghi nhận hoạt động',
-                            accentColor: const Color(0xFF2F8F4D),
-                            tag: 'Ghi nhận',
-                            onTap: () => Navigator.pushNamed(
-                              context,
-                              AppRouter.addEvent,
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 18),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              'Lô nông sản của tôi',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleLarge
+                                  ?.copyWith(
+                                    fontWeight: FontWeight.w900,
+                                    color: AppColors.forest,
+                                    fontSize: 18,
+                                  ),
                             ),
                           ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _QuickActionCard(
-                            icon: Icons.qr_code_scanner_rounded,
-                            title: 'Quét QR',
-                            subtitle: 'Mở thông tin truy xuất',
-                            accentColor: const Color(0xFF406CBE),
-                            tag: 'Tra cứu nhanh',
-                            onTap: () =>
-                                Navigator.pushNamed(context, AppRouter.scanner),
+                          TextButton.icon(
+                            onPressed: () => ref.invalidate(batchListProvider),
+                            label: const Text('Xem tất cả'),
+                            icon: const Icon(Icons.chevron_right_rounded),
                           ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 20),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            'Danh sách lô',
-                            style: Theme.of(context).textTheme.titleLarge,
-                          ),
-                        ),
-                        IconButton.filledTonal(
-                          tooltip: 'Thêm lô mới',
-                          onPressed: () => Navigator.pushNamed(
-                            context,
-                            AppRouter.createProduct,
-                          ),
-                          icon: const Icon(Icons.add_rounded),
-                        ),
-                        const SizedBox(width: 6),
-                        TextButton.icon(
-                          onPressed: () => ref.invalidate(batchListProvider),
-                          icon: const Icon(Icons.refresh_rounded),
-                          label: const Text('Làm mới'),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    GlassPanel(
-                      radius: 22,
-                      padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
-                      colors: [
-                        Colors.white.withValues(alpha: 0.44),
-                        Colors.white.withValues(alpha: 0.18),
-                      ],
-                      child: TextField(
-                        controller: _searchController,
-                        onChanged: (value) {
-                          setState(() => _searchQuery = value);
-                        },
-                        decoration: InputDecoration(
-                          labelText: 'Tìm kiếm lô',
-                          hintText: 'Theo mã lô, tên sản phẩm, xuất xứ...',
-                          prefixIcon: const Icon(Icons.search_rounded),
-                          suffixIcon: _searchQuery.trim().isEmpty
-                              ? null
-                              : IconButton(
-                                  onPressed: () {
-                                    _searchController.clear();
-                                    setState(() => _searchQuery = '');
-                                  },
-                                  icon: const Icon(Icons.close_rounded),
-                                ),
-                        ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 10),
-                    Text(
-                      'Hiển thị ${displayedBatches.length}/${batches.length} lô',
-                      style: const TextStyle(
-                        color: AppColors.muted,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 12,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
+                    const SizedBox(height: 12),
                     if (batches.isEmpty)
-                      const GlassPanel(
-                        child: Text(
-                          'Chưa có lô nào để hiển thị. Hãy tạo trước vài lô mẫu để thuận tiện thao tác khi demo.',
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 18),
+                        child: GlassPanel(
+                          child: Text(
+                            'Chưa có lô nào để hiển thị. Hãy tạo trước vài lô mẫu để thuận tiện thao tác khi demo.',
+                          ),
                         ),
                       )
                     else if (displayedBatches.isEmpty)
-                      GlassPanel(
-                        child: Text(
-                          'Không tìm thấy lô phù hợp với từ khóa "${_searchQuery.trim()}".',
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 18),
+                        child: GlassPanel(
+                          child: Text(
+                            'Không tìm thấy lô phù hợp với từ khóa "${_searchQuery.trim()}".',
+                          ),
                         ),
                       )
                     else
                       ...displayedBatches.map(
                         (batch) => Padding(
-                          padding: const EdgeInsets.only(bottom: 14),
+                          padding: const EdgeInsets.fromLTRB(18, 0, 18, 12),
                           child: _BatchCard(
                             batch: batch,
                             allBatches: batches,
@@ -318,8 +230,7 @@ class _FarmerDashboardScreenState extends ConsumerState<FarmerDashboardScreen> {
             },
           ),
         ),
-      ),
-    );
+      );
   }
 }
 
@@ -368,6 +279,76 @@ class _MetricTile extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _DashboardLoading extends StatelessWidget {
+  const _DashboardLoading({
+    required this.userName,
+    required this.roleLabel,
+    required this.location,
+    required this.controller,
+    required this.onChanged,
+    required this.onScan,
+  });
+
+  final String userName;
+  final String roleLabel;
+  final String location;
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onScan;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      padding: const EdgeInsets.fromLTRB(0, 0, 0, 104),
+      children: [
+        _DashboardHero(
+          userName: userName,
+          roleLabel: roleLabel,
+          location: location,
+          warningCount: 0,
+          onLogout: () => Navigator.pushNamedAndRemoveUntil(
+            context,
+            AppRouter.home,
+            (_) => false,
+          ),
+          controller: controller,
+          onChanged: onChanged,
+          onScan: onScan,
+        ),
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 18),
+          child: GlassPanel(
+            radius: 18,
+            padding: EdgeInsets.all(20),
+            colors: [Colors.white, Color(0xFFF8FBF6)],
+            child: Center(child: CircularProgressIndicator()),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 18),
+          child: Text(
+            'Thao tác nhanh',
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w900,
+                  color: AppColors.forest,
+                  fontSize: 18,
+                ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Padding(
+          padding: const EdgeInsets.only(left: 18),
+          child: _QuickActionsGrid(
+            actions: _buildQuickActions(context, onInventoryTap: () {}),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -457,137 +438,274 @@ class _BatchCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final sortedEvents = [...batch.events]
       ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
-    final confirmedCount = sortedEvents
-        .where((event) => event.onChainStatus == 'confirmed')
-        .length;
-    final mediaCount = sortedEvents.fold<int>(
-      0,
-      (sum, event) => sum + event.imageUrls.length + event.videoUrls.length,
-    );
-    final latestEvent = sortedEvents.isEmpty ? null : sortedEvents.last;
+    final harvestEvents =
+        sortedEvents.where((event) => event.actionType == 'HARVESTING').toList();
+    final latestHarvestEvent = harvestEvents.isEmpty ? null : harvestEvents.last;
     final timelineRoute = '${AppRouter.timeline}?batchId=${batch.batchId}';
     final addEventRoute = '${AppRouter.addEvent}?batchId=${batch.batchId}';
     final camerasRoute = '${AppRouter.cameras}?batchId=${batch.batchId}';
     final cameraCount = batch.liveCameras.length;
+    final imageUrl = batch.imageUrls.isEmpty ? '' : batch.imageUrls.first;
+    final batchCode = _displayBatchCode(
+      batch.batchCode.isEmpty ? batch.batchId : batch.batchCode,
+    );
+    final typeLabel = batch.productType.isEmpty ? 'Lô nông sản' : batch.productType;
+    final harvestDate = latestHarvestEvent == null
+        ? ''
+        : 'Thu hoạch: ${_formatShortDate(latestHarvestEvent.createdAt)}';
 
-    return GlassPanel(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const GlassIconCapsule(
-                icon: Icons.inventory_2_outlined,
-                size: 54,
-                color: AppColors.pine,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 560;
+        final imageWidth = compact ? 104.0 : 160.0;
+        final imageHeight = compact ? 82.0 : 112.0;
+
+        return Container(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            boxShadow: [
+              BoxShadow(
+                color: AppColors.forest.withValues(alpha: 0.1),
+                blurRadius: 18,
+                offset: const Offset(0, 8),
               ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+            ],
+            border: Border.all(color: const Color(0xFFECEFEA)),
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(14),
+              onTap: () => Navigator.pushNamed(context, timelineRoute),
+              onLongPress: () => _showBatchActions(
+                context,
+                ref,
+                timelineRoute,
+                addEventRoute,
+                camerasRoute,
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(8),
+                child: Row(
                   children: [
-                    Text(
-                      batch.productName,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w800,
-                        fontSize: 17,
-                        color: AppColors.ink,
+                    _ProductThumb(
+                      imageUrl: imageUrl,
+                      label: typeLabel,
+                      width: imageWidth,
+                      height: imageHeight,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            batch.productName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: AppColors.ink,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 9,
+                              vertical: 4,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppColors.moss.withValues(alpha: 0.82),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              batchCode,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: AppColors.pine,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 5),
+                          if (batch.origin.isNotEmpty)
+                            _ProductMetaLine(
+                              icon: Icons.place_outlined,
+                              text: batch.origin,
+                            ),
+                          if (harvestDate.isNotEmpty)
+                            _ProductMetaLine(
+                              icon: Icons.calendar_today_outlined,
+                              text: harvestDate,
+                            ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Mã lô: ${batch.batchCode.isEmpty ? batch.batchId : batch.batchCode}',
+                    const SizedBox(width: 6),
+                    SizedBox(
+                      width: compact ? 96 : 138,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _CompactStatusPill(status: batch.status),
+                          const SizedBox(height: 10),
+                          const Text(
+                            'Tồn kho',
+                            style: TextStyle(
+                              color: AppColors.muted,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              '${_formatQuantity(batch.currentQuantity)} ${batch.unit}',
+                              style: TextStyle(
+                                color: AppColors.pine,
+                                fontSize: compact ? 19 : 22,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (cameraCount > 0)
+                                _TinyIconButton(
+                                  icon: Icons.videocam_rounded,
+                                  onTap: () => Navigator.pushNamed(
+                                    context,
+                                    camerasRoute,
+                                  ),
+                                ),
+                              _TinyIconButton(
+                                icon: Icons.more_horiz_rounded,
+                                onTap: () => _showBatchActions(
+                                  context,
+                                  ref,
+                                  timelineRoute,
+                                  addEventRoute,
+                                  camerasRoute,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
-                    if (batch.origin.isNotEmpty) ...[
-                      const SizedBox(height: 2),
-                      Text('Xuất xứ: ${batch.origin}'),
-                    ],
                   ],
                 ),
               ),
-              _StatusPill(status: batch.status),
-            ],
-          ),
-          if (latestEvent != null) ...[
-            const SizedBox(height: 14),
-            _LatestEventStrip(
-              title: _labelForAction(latestEvent.actionType),
-              note: latestEvent.note,
             ),
-          ],
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _InlineInfoChip(
-                icon: Icons.timeline_rounded,
-                label: '${sortedEvents.length} mốc',
-              ),
-              _InlineInfoChip(
-                icon: Icons.verified_rounded,
-                label: '$confirmedCount đã xác nhận',
-              ),
-              _InlineInfoChip(
-                icon: Icons.perm_media_rounded,
-                label: '$mediaCount media',
-              ),
-              _InlineInfoChip(
-                icon: Icons.videocam_rounded,
-                label: '$cameraCount camera',
-              ),
-            ],
           ),
-          const SizedBox(height: 16),
-          _BatchActionNavBar(
-            items: [
-              _BatchNavItemData(
-                icon: Icons.timeline_rounded,
-                label: 'Timeline',
-                color: AppColors.ink,
-                onTap: () => Navigator.pushNamed(context, timelineRoute),
-              ),
-              _BatchNavItemData(
-                icon: Icons.add_circle_outline_rounded,
-                label: 'Nhật ký',
-                color: AppColors.forest,
-                isPrimary: true,
-                onTap: () => Navigator.pushNamed(context, addEventRoute),
-              ),
-              _BatchNavItemData(
-                icon: Icons.edit_outlined,
-                label: 'Sửa',
-                color: AppColors.ink,
-                onTap: () => Navigator.pushNamed(
-                  context,
-                  AppRouter.editProduct,
-                  arguments: batch,
-                ),
-              ),
-              _BatchNavItemData(
-                icon: Icons.videocam_rounded,
-                label: 'Camera',
-                color: cameraCount == 0 ? AppColors.danger : AppColors.pine,
-                badge: '$cameraCount',
-                onTap: () => Navigator.pushNamed(context, camerasRoute),
-              ),
-              _BatchNavItemData(
-                icon: Icons.account_tree_outlined,
-                label: 'Nghiệp vụ',
-                color: AppColors.forest,
-                onTap: () => _showBatchWorkflowSheet(context, ref),
-              ),
-              if (canDelete)
-                _BatchNavItemData(
-                  icon: Icons.delete_outline_rounded,
-                  label: 'Xóa',
-                  color: AppColors.danger,
-                  onTap: () => _confirmDelete(context, ref),
-                ),
-            ],
+        );
+      },
+    );
+  }
+
+  void _showBatchActions(
+    BuildContext context,
+    WidgetRef ref,
+    String timelineRoute,
+    String addEventRoute,
+    String camerasRoute,
+  ) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (sheetContext) => SafeArea(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.82,
           ),
-        ],
+          child: GlassPanel(
+            radius: 28,
+            padding: const EdgeInsets.fromLTRB(18, 10, 18, 12),
+            colors: [
+              Colors.white.withValues(alpha: 0.96),
+              const Color(0xFFEAF6E7),
+            ],
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 42,
+                    height: 5,
+                    margin: const EdgeInsets.only(bottom: 8),
+                    decoration: BoxDecoration(
+                      color: AppColors.muted.withValues(alpha: 0.22),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                  _BatchSheetAction(
+                    icon: Icons.timeline_rounded,
+                    label: 'Mở timeline',
+                    onTap: () {
+                      Navigator.pop(context);
+                      Navigator.pushNamed(context, timelineRoute);
+                    },
+                  ),
+                  _BatchSheetAction(
+                    icon: Icons.add_circle_outline_rounded,
+                    label: 'Thêm nhật ký',
+                    onTap: () {
+                      Navigator.pop(context);
+                      Navigator.pushNamed(context, addEventRoute);
+                    },
+                  ),
+                  _BatchSheetAction(
+                    icon: Icons.edit_outlined,
+                    label: 'Sửa thông tin lô',
+                    onTap: () {
+                      Navigator.pop(context);
+                      Navigator.pushNamed(
+                        context,
+                        AppRouter.editProduct,
+                        arguments: batch,
+                      );
+                    },
+                  ),
+                  _BatchSheetAction(
+                    icon: Icons.videocam_rounded,
+                    label: 'Quản lý camera',
+                    onTap: () {
+                      Navigator.pop(context);
+                      Navigator.pushNamed(context, camerasRoute);
+                    },
+                  ),
+                  _BatchSheetAction(
+                    icon: Icons.account_tree_outlined,
+                    label: 'Tách, gộp, thu hồi',
+                    onTap: () {
+                      Navigator.pop(context);
+                      _showBatchWorkflowSheet(context, ref);
+                    },
+                  ),
+                  if (canDelete)
+                    _BatchSheetAction(
+                      icon: Icons.delete_outline_rounded,
+                      label: 'Xóa lô',
+                      color: AppColors.danger,
+                      onTap: () {
+                        Navigator.pop(context);
+                        _confirmDelete(context, ref);
+                      },
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -607,7 +725,7 @@ class _BatchCard extends ConsumerWidget {
       messenger.showSnackBar(SnackBar(content: Text(successMessage)));
     } catch (error) {
       messenger.showSnackBar(
-        SnackBar(content: Text(error.toString()), backgroundColor: AppColors.danger),
+        SnackBar(content: Text(_friendlyError(error)), backgroundColor: AppColors.danger),
       );
     }
   }
@@ -620,42 +738,33 @@ class _BatchCard extends ConsumerWidget {
       builder: (_) => _WorkflowSheet(
         batch: batch,
         allBatches: allBatches,
-        onSplit: (quantity, childName, childQuantity, note) => _runWorkflow(
+        onSplit: (quantity, childName, note) => _runWorkflow(
           context,
           ref,
           () => ref.read(batchServiceProvider).splitProduct(
                 productId: batch.id,
                 quantity: quantity,
                 childName: childName,
-                childQuantity: childQuantity,
                 note: note,
               ),
           'Đã tách lô thành công.',
         ),
-        onMerge: (targetBatch, targetName, targetQuantity, note) => _runWorkflow(
+        onMerge: (
+          targetBatch,
+          targetSourceQuantity,
+          targetName,
+          note,
+        ) => _runWorkflow(
           context,
           ref,
           () => ref.read(batchServiceProvider).mergeProducts(
-                sourceA: batch.id,
-                sourceB: targetBatch.id,
+                targetProductId: batch.id,
+                sourceProductId: targetBatch.id,
+                sourceQuantity: targetSourceQuantity,
                 targetName: targetName,
-                targetQuantity: targetQuantity,
                 note: note,
               ),
           'Đã gộp lô thành công.',
-        ),
-        onRecall: (quantity, reason, note, location, status) => _runWorkflow(
-          context,
-          ref,
-          () => ref.read(batchServiceProvider).recallProduct(
-                productId: batch.id,
-                quantity: quantity,
-                reason: reason,
-                note: note,
-                location: location,
-                status: status,
-          ),
-          'Đã ghi nhận thu hồi lô.',
         ),
         onStatusChange: (status, reason, note) => _runWorkflow(
           context,
@@ -734,6 +843,1134 @@ class _BatchCard extends ConsumerWidget {
       default:
         return actionType;
     }
+  }
+}
+
+String _friendlyError(Object error) {
+  final message = error.toString();
+  if (message.startsWith('Exception: ')) {
+    return message.substring('Exception: '.length);
+  }
+  if (message.startsWith('DioException')) {
+    return 'Không thể xử lý yêu cầu. Vui lòng kiểm tra lại dữ liệu.';
+  }
+  return message;
+}
+
+String _roleLabel(String role) {
+  switch (role) {
+    case 'admin':
+      return 'Quản trị';
+    case 'manager':
+      return 'Quản lý';
+    case 'farmer':
+      return 'Nông dân';
+    case 'consumer':
+      return 'Người dùng';
+    default:
+      return 'Nông dân';
+  }
+}
+
+class _DashboardHeader extends StatelessWidget {
+  const _DashboardHeader({
+    required this.userName,
+    required this.roleLabel,
+    required this.location,
+    required this.warningCount,
+    required this.onLogout,
+  });
+
+  final String userName;
+  final String roleLabel;
+  final String location;
+  final int warningCount;
+  final VoidCallback onLogout;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(18, 26, 18, 58),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF063D21), Color(0xFF0B713B)],
+        ),
+        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(32)),
+        image: DecorationImage(
+          image: const NetworkImage(
+            'https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&w=1200&q=70',
+          ),
+          fit: BoxFit.cover,
+          opacity: 0.16,
+          alignment: Alignment.bottomCenter,
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Xin chào',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    Text(
+                      userName,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 27,
+                        height: 1.05,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.18),
+                        borderRadius: BorderRadius.circular(9),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.14),
+                        ),
+                      ),
+                      child: Text(
+                        roleLabel,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.location_on_rounded,
+                      color: Colors.white,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        location,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          _HeaderIconButton(
+            icon: Icons.notifications_none_rounded,
+            badge: warningCount == 0 ? 3 : warningCount,
+            onTap: () => Navigator.pushNamed(context, AppRouter.notifications),
+          ),
+          const SizedBox(width: 10),
+          _AvatarButton(onTap: onLogout),
+        ],
+      ),
+    );
+  }
+}
+
+class _DashboardHero extends StatelessWidget {
+  const _DashboardHero({
+    required this.userName,
+    required this.roleLabel,
+    required this.location,
+    required this.warningCount,
+    required this.onLogout,
+    required this.controller,
+    required this.onChanged,
+    required this.onScan,
+    this.onClear,
+  });
+
+  final String userName;
+  final String roleLabel;
+  final String location;
+  final int warningCount;
+  final VoidCallback onLogout;
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onScan;
+  final VoidCallback? onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 254,
+      width: double.infinity,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Positioned(
+            left: 0,
+            top: 0,
+            right: 0,
+            height: 202,
+            child: _DashboardHeader(
+              userName: userName,
+              roleLabel: roleLabel,
+              location: location,
+              warningCount: warningCount,
+              onLogout: onLogout,
+            ),
+          ),
+          Positioned(
+            left: 18,
+            right: 18,
+            bottom: 8,
+            child: _SearchScanBar(
+              controller: controller,
+              onChanged: onChanged,
+              onClear: onClear,
+              onScan: onScan,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HeaderIconButton extends StatelessWidget {
+  const _HeaderIconButton({
+    required this.icon,
+    required this.onTap,
+    this.badge = 0,
+  });
+
+  final IconData icon;
+  final VoidCallback onTap;
+  final int badge;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(999),
+      onTap: onTap,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: Colors.transparent,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, color: Colors.white, size: 30),
+          ),
+          if (badge > 0)
+            Positioned(
+              right: -4,
+              top: -6,
+              child: Container(
+                width: 24,
+                height: 24,
+                alignment: Alignment.center,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFFF4B4B),
+                  shape: BoxShape.circle,
+                ),
+                child: Text(
+                  badge > 9 ? '9+' : '$badge',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AvatarButton extends StatelessWidget {
+  const _AvatarButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(999),
+      onTap: onTap,
+      child: Container(
+        width: 54,
+        height: 54,
+        padding: const EdgeInsets.all(3),
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: Colors.white.withValues(alpha: 0.85),
+        ),
+        child: const CircleAvatar(
+          backgroundColor: Color(0xFFE4F4DF),
+          backgroundImage: NetworkImage(
+            'https://images.unsplash.com/photo-1607346256330-dee7af15f7c5?auto=format&fit=crop&w=240&q=80',
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SearchScanBar extends StatelessWidget {
+  const _SearchScanBar({
+    required this.controller,
+    required this.onChanged,
+    required this.onScan,
+    this.onClear,
+  });
+
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+  final VoidCallback onScan;
+  final VoidCallback? onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 58,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(15),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.forest.withValues(alpha: 0.13),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.search_rounded, color: Color(0xFF102820), size: 30),
+          const SizedBox(width: 12),
+          Expanded(
+            child: TextField(
+              controller: controller,
+              onChanged: onChanged,
+              style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+              decoration: const InputDecoration(
+                hintText: 'Tìm lô, mã lô, loại nông sản...',
+                hintStyle: TextStyle(
+                  color: Color(0xFF6E6E6E),
+                  fontSize: 15,
+                  fontWeight: FontWeight.w500,
+                ),
+                border: InputBorder.none,
+                enabledBorder: InputBorder.none,
+                focusedBorder: InputBorder.none,
+                filled: false,
+              ),
+            ),
+          ),
+          if (onClear != null)
+            IconButton(
+              onPressed: onClear,
+              icon: const Icon(Icons.close_rounded),
+            ),
+          IconButton(
+            tooltip: 'Quét QR',
+            onPressed: onScan,
+            icon: const Icon(
+              Icons.qr_code_scanner_rounded,
+              color: AppColors.pine,
+              size: 27,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TodayOverviewCard extends StatelessWidget {
+  const _TodayOverviewCard({
+    required this.batchCount,
+    required this.inventoryTotal,
+    required this.newJournalCount,
+    required this.warningCount,
+  });
+
+  final int batchCount;
+  final double inventoryTotal;
+  final int newJournalCount;
+  final int warningCount;
+
+  @override
+  Widget build(BuildContext context) {
+    return GlassPanel(
+      radius: 18,
+      blur: 10,
+      padding: const EdgeInsets.fromLTRB(18, 17, 18, 19),
+      colors: [
+        Colors.white.withValues(alpha: 0.99),
+        Colors.white.withValues(alpha: 0.97),
+      ],
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Tổng quan hôm nay',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        color: AppColors.forest,
+                        fontWeight: FontWeight.w900,
+                      ),
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded, size: 26),
+            ],
+          ),
+          const SizedBox(height: 18),
+          Row(
+            children: [
+              Expanded(
+                child: _OverviewMetric(
+                  icon: Icons.eco_outlined,
+                  value: '$batchCount',
+                  label: 'Lô đang theo dõi',
+                  color: AppColors.pine,
+                ),
+              ),
+              const _OverviewDivider(),
+              Expanded(
+                child: _OverviewMetric(
+                  icon: Icons.inventory_2_outlined,
+                  value: _formatCompactKg(inventoryTotal),
+                  label: 'Tồn kho',
+                  color: const Color(0xFFE7A321),
+                ),
+              ),
+              const _OverviewDivider(),
+              Expanded(
+                child: _OverviewMetric(
+                  icon: Icons.assignment_turned_in_outlined,
+                  value: '$newJournalCount',
+                  label: 'Nhật ký mới',
+                  color: AppColors.pine,
+                ),
+              ),
+              const _OverviewDivider(),
+              Expanded(
+                child: _OverviewMetric(
+                  icon: Icons.warning_amber_rounded,
+                  value: '$warningCount',
+                  label: 'Cảnh báo',
+                  color: const Color(0xFFF17D18),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _OverviewDivider extends StatelessWidget {
+  const _OverviewDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 1,
+      height: 66,
+      margin: const EdgeInsets.symmetric(horizontal: 8),
+      color: const Color(0xFFE6E6E6),
+    );
+  }
+}
+
+class _OverviewMetric extends StatelessWidget {
+  const _OverviewMetric({
+    required this.icon,
+    required this.value,
+    required this.label,
+    required this.color,
+  });
+
+  final IconData icon;
+  final String value;
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Container(
+          width: 50,
+          height: 50,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: color.withValues(alpha: 0.13),
+          ),
+          child: Icon(icon, color: color, size: 26),
+        ),
+        const SizedBox(height: 10),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            value,
+            style: const TextStyle(
+              color: AppColors.forest,
+                fontSize: 22,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          label,
+          textAlign: TextAlign.center,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            color: AppColors.muted,
+            fontSize: 11,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _QuickActionTile extends StatelessWidget {
+  const _QuickActionTile({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.width = 118,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final double width;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: width,
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(13),
+        shadowColor: AppColors.forest.withValues(alpha: 0.18),
+        elevation: 3,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(13),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 14),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, color: AppColors.pine, size: 35),
+                const SizedBox(height: 11),
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: AppColors.ink,
+                    fontWeight: FontWeight.w800,
+                    fontSize: 13,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _QuickActionData {
+  const _QuickActionData({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+}
+
+List<_QuickActionData> _buildQuickActions(
+  BuildContext context, {
+  required VoidCallback onInventoryTap,
+}) {
+  return [
+    _QuickActionData(
+      icon: Icons.add_circle_outline_rounded,
+      label: 'Tạo lô',
+      onTap: () => Navigator.pushNamed(context, AppRouter.createProduct),
+    ),
+    _QuickActionData(
+      icon: Icons.qr_code_scanner_rounded,
+      label: 'Quét QR',
+      onTap: () => Navigator.pushNamed(context, AppRouter.scanner),
+    ),
+    _QuickActionData(
+      icon: Icons.edit_note_rounded,
+      label: 'Nhật ký',
+      onTap: () => Navigator.pushNamed(context, AppRouter.addEvent),
+    ),
+    _QuickActionData(
+      icon: Icons.inventory_2_outlined,
+      label: 'Tồn kho',
+      onTap: onInventoryTap,
+    ),
+    _QuickActionData(
+      icon: Icons.landscape_outlined,
+      label: 'Vùng trồng',
+      onTap: () => Navigator.pushNamed(context, '${AppRouter.management}?tab=1'),
+    ),
+    _QuickActionData(
+      icon: Icons.science_outlined,
+      label: 'Kiểm nghiệm',
+      onTap: () => Navigator.pushNamed(context, '${AppRouter.management}?tab=0'),
+    ),
+    _QuickActionData(
+      icon: Icons.verified_outlined,
+      label: 'Chứng nhận',
+      onTap: () => Navigator.pushNamed(context, '${AppRouter.management}?tab=2'),
+    ),
+    _QuickActionData(
+      icon: Icons.videocam_outlined,
+      label: 'Camera',
+      onTap: () => Navigator.pushNamed(context, AppRouter.farmer),
+    ),
+    _QuickActionData(
+      icon: Icons.health_and_safety_outlined,
+      label: 'Bệnh cây',
+      onTap: () => Navigator.pushNamed(context, AppRouter.diseaseDetection),
+    ),
+    _QuickActionData(
+      icon: Icons.delete_outline_rounded,
+      label: 'Thùng rác',
+      onTap: () => Navigator.pushNamed(context, AppRouter.productTrash),
+    ),
+  ];
+}
+
+class _QuickActionsGrid extends StatelessWidget {
+  const _QuickActionsGrid({required this.actions});
+
+  final List<_QuickActionData> actions;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final gap = constraints.maxWidth >= 700 ? 20.0 : 10.0;
+        final itemWidth = constraints.maxWidth >= 700
+            ? (constraints.maxWidth - gap * 4) / 5
+            : constraints.maxWidth >= 520
+                ? 128.0
+                : 104.0;
+
+        return SizedBox(
+          height: 106,
+          child: ScrollConfiguration(
+            behavior: const _DragScrollBehavior(),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              clipBehavior: Clip.none,
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.only(right: 20),
+              child: Row(
+                children: [
+                  for (var index = 0; index < actions.length; index++) ...[
+                    _QuickActionTile(
+                      icon: actions[index].icon,
+                      label: actions[index].label,
+                      onTap: actions[index].onTap,
+                      width: itemWidth,
+                    ),
+                    if (index != actions.length - 1)
+                      SizedBox(width: gap),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _DragScrollBehavior extends MaterialScrollBehavior {
+  const _DragScrollBehavior();
+
+  @override
+  Set<PointerDeviceKind> get dragDevices => {
+        PointerDeviceKind.touch,
+        PointerDeviceKind.mouse,
+        PointerDeviceKind.trackpad,
+        PointerDeviceKind.stylus,
+      };
+}
+
+class _ProductImageFallback extends StatelessWidget {
+  const _ProductImageFallback({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF2A7F45), Color(0xFFF0D58D)],
+        ),
+      ),
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.image_outlined,
+              color: Colors.white,
+              size: 36,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              label,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HeroChip extends StatelessWidget {
+  const _HeroChip({required this.icon, required this.label});
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 210),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.26)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: Colors.white),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InventorySnapshot extends StatelessWidget {
+  const _InventorySnapshot({
+    required this.currentQuantity,
+    required this.initialQuantity,
+    required this.unit,
+    required this.percent,
+  });
+
+  final double currentQuantity;
+  final double initialQuantity;
+  final String unit;
+  final double percent;
+
+  @override
+  Widget build(BuildContext context) {
+    final percentLabel = (percent * 100).round();
+    final barColor = percentLabel < 25 ? const Color(0xFFEAA739) : AppColors.pine;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.28),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.52)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: _QuantityLabel(
+                  label: 'Tồn hiện tại',
+                  value: '${_formatQuantity(currentQuantity)} $unit',
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _QuantityLabel(
+                  label: 'Ban đầu',
+                  value: '${_formatQuantity(initialQuantity)} $unit',
+                  alignEnd: true,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(999),
+                  child: LinearProgressIndicator(
+                    minHeight: 9,
+                    value: percent,
+                    backgroundColor: Colors.white.withValues(alpha: 0.58),
+                    valueColor: AlwaysStoppedAnimation<Color>(barColor),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                '$percentLabel%',
+                style: TextStyle(
+                  color: barColor,
+                  fontWeight: FontWeight.w900,
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _QuantityLabel extends StatelessWidget {
+  const _QuantityLabel({
+    required this.label,
+    required this.value,
+    this.alignEnd = false,
+  });
+
+  final String label;
+  final String value;
+  final bool alignEnd;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment:
+          alignEnd ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            color: AppColors.muted,
+            fontSize: 11,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        const SizedBox(height: 3),
+        Text(
+          value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            color: AppColors.ink,
+            fontSize: 15,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+String _formatQuantity(double value) {
+  if (value == value.roundToDouble()) return value.toStringAsFixed(0);
+  return value.toStringAsFixed(2);
+}
+
+String _formatShortDate(DateTime date) {
+  final day = date.day.toString().padLeft(2, '0');
+  final month = date.month.toString().padLeft(2, '0');
+  return '$day/$month/${date.year}';
+}
+
+String _formatCompactKg(double value) {
+  final rounded = value.round();
+  final text = rounded.toString().replaceAllMapped(
+        RegExp(r'\B(?=(\d{3})+(?!\d))'),
+        (_) => '.',
+      );
+  return '$text kg';
+}
+
+String _displayBatchCode(String value) {
+  final trimmed = value.trim();
+  if (trimmed.length <= 14) return trimmed;
+  return '${trimmed.substring(0, 12)}...';
+}
+
+class _ProductThumb extends StatelessWidget {
+  const _ProductThumb({
+    required this.imageUrl,
+    required this.label,
+    this.width = 118,
+    this.height = 92,
+  });
+
+  final String imageUrl;
+  final String label;
+  final double width;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: SizedBox(
+        width: width,
+        height: height,
+        child: imageUrl.isEmpty
+            ? _ProductImageFallback(label: label)
+            : Image.network(
+                imageUrl,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => _ProductImageFallback(
+                  label: label,
+                ),
+              ),
+      ),
+    );
+  }
+}
+
+class _CompactStatusPill extends StatelessWidget {
+  const _CompactStatusPill({required this.status});
+
+  final String status;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = switch (status) {
+      'completed' => const Color(0xFF2E956A),
+      'draft' => const Color(0xFFF17D18),
+      'recalled' => AppColors.danger,
+      _ => AppColors.pine,
+    };
+    final label = switch (status) {
+      'completed' => 'Hoàn tất',
+      'draft' => 'Sắp thu hoạch',
+      'recalled' => 'Thu hồi',
+      _ => 'Đang theo dõi',
+    };
+
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: Alignment.centerLeft,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 6,
+              height: 6,
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                color: color,
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ProductMetaLine extends StatelessWidget {
+  const _ProductMetaLine({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 3),
+      child: Row(
+        children: [
+          Icon(icon, size: 14, color: AppColors.muted),
+          const SizedBox(width: 5),
+          Expanded(
+            child: Text(
+              text,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: AppColors.muted,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TinyIconButton extends StatelessWidget {
+  const _TinyIconButton({required this.icon, required this.onTap});
+
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(left: 6),
+      child: Material(
+        color: AppColors.pine.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(999),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(999),
+          onTap: onTap,
+          child: SizedBox(
+            width: 34,
+            height: 34,
+            child: Icon(icon, color: AppColors.pine, size: 19),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _BatchSheetAction extends StatelessWidget {
+  const _BatchSheetAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.color = AppColors.pine,
+  });
+
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+          child: Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(13),
+                ),
+                child: Icon(icon, color: color, size: 21),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    color: color == AppColors.danger ? color : AppColors.ink,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              Icon(Icons.chevron_right_rounded, color: color),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -986,7 +2223,6 @@ class _WorkflowSheet extends StatefulWidget {
     required this.allBatches,
     required this.onSplit,
     required this.onMerge,
-    required this.onRecall,
     required this.onStatusChange,
   });
 
@@ -995,22 +2231,14 @@ class _WorkflowSheet extends StatefulWidget {
   final Future<void> Function(
     double quantity,
     String childName,
-    double childQuantity,
     String note,
   ) onSplit;
   final Future<void> Function(
     Batch targetBatch,
+    double? targetSourceQuantity,
     String targetName,
-    double? targetQuantity,
     String note,
   ) onMerge;
-  final Future<void> Function(
-    double? quantity,
-    String reason,
-    String note,
-    String location,
-    String status,
-  ) onRecall;
   final Future<void> Function(
     String status,
     String reason,
@@ -1025,19 +2253,13 @@ class _WorkflowSheetState extends State<_WorkflowSheet> {
   String _mode = 'split';
   bool _submitting = false;
   Batch? _mergeTarget;
-  String _recallStatus = 'IN_PROGRESS';
   late String _targetStatus;
   final _splitQuantity = TextEditingController();
   final _childName = TextEditingController();
-  final _childQuantity = TextEditingController();
   final _splitNote = TextEditingController();
   final _mergeName = TextEditingController();
-  final _mergeQuantity = TextEditingController();
+  final _mergeTargetSourceQuantity = TextEditingController();
   final _mergeNote = TextEditingController();
-  final _recallQuantity = TextEditingController();
-  final _recallReason = TextEditingController();
-  final _recallNote = TextEditingController();
-  final _recallLocation = TextEditingController();
   final _statusReason = TextEditingController();
   final _statusNote = TextEditingController();
 
@@ -1046,6 +2268,9 @@ class _WorkflowSheetState extends State<_WorkflowSheet> {
     super.initState();
     final candidates = widget.allBatches.where((item) => item.id != widget.batch.id);
     _mergeTarget = candidates.isEmpty ? null : candidates.first;
+    if (_mergeTarget != null) {
+      _mergeTargetSourceQuantity.text = _formatQuantity(_mergeTarget!.currentQuantity);
+    }
     final options = _nextStatusOptions();
     _targetStatus = options.isEmpty ? widget.batch.status : options.first;
   }
@@ -1054,15 +2279,10 @@ class _WorkflowSheetState extends State<_WorkflowSheet> {
   void dispose() {
     _splitQuantity.dispose();
     _childName.dispose();
-    _childQuantity.dispose();
     _splitNote.dispose();
     _mergeName.dispose();
-    _mergeQuantity.dispose();
+    _mergeTargetSourceQuantity.dispose();
     _mergeNote.dispose();
-    _recallQuantity.dispose();
-    _recallReason.dispose();
-    _recallNote.dispose();
-    _recallLocation.dispose();
     _statusReason.dispose();
     _statusNote.dispose();
     super.dispose();
@@ -1074,34 +2294,31 @@ class _WorkflowSheetState extends State<_WorkflowSheet> {
     try {
       if (_mode == 'split') {
         final quantity = _parseRequired(_splitQuantity.text, 'Số lượng tách');
-        final childQuantity = _childQuantity.text.trim().isEmpty
-            ? quantity
-            : _parseRequired(_childQuantity.text, 'Số lượng lô con');
+        _ensureAtMost(
+          quantity,
+          widget.batch.currentQuantity,
+          'Số lượng tách không được lớn hơn tồn hiện tại',
+        );
         await widget.onSplit(
           quantity,
           _childName.text,
-          childQuantity,
           _splitNote.text,
         );
       } else if (_mode == 'merge') {
         final target = _mergeTarget;
         if (target == null) throw Exception('Vui lòng chọn lô để gộp');
+        final targetSourceQuantity =
+            _parseOptional(_mergeTargetSourceQuantity.text) ?? target.currentQuantity;
+        _ensureAtMost(
+          targetSourceQuantity,
+          target.currentQuantity,
+          'Lượng lấy từ lô gộp cùng không được lớn hơn tồn của lô đó',
+        );
         await widget.onMerge(
           target,
+          targetSourceQuantity,
           _mergeName.text,
-          _parseOptional(_mergeQuantity.text),
           _mergeNote.text,
-        );
-      } else if (_mode == 'recall') {
-        if (_recallReason.text.trim().isEmpty) {
-          throw Exception('Vui lòng nhập lý do thu hồi');
-        }
-        await widget.onRecall(
-          _parseOptional(_recallQuantity.text),
-          _recallReason.text,
-          _recallNote.text,
-          _recallLocation.text,
-          _recallStatus,
         );
       } else {
         if (_statusReason.text.trim().isEmpty) {
@@ -1117,7 +2334,7 @@ class _WorkflowSheetState extends State<_WorkflowSheet> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(error.toString()),
+            content: Text(_friendlyError(error)),
             backgroundColor: AppColors.danger,
           ),
         );
@@ -1143,6 +2360,12 @@ class _WorkflowSheetState extends State<_WorkflowSheet> {
       throw Exception('Số lượng phải lớn hơn 0');
     }
     return value;
+  }
+
+  void _ensureAtMost(double value, double max, String message) {
+    if (value - max > 0.000001) {
+      throw Exception('$message. Tối đa: ${_formatQuantity(max)} ${widget.batch.unit}');
+    }
   }
 
   @override
@@ -1201,11 +2424,6 @@ class _WorkflowSheetState extends State<_WorkflowSheet> {
                       label: Text('Gộp'),
                     ),
                     ButtonSegment(
-                      value: 'recall',
-                      icon: Icon(Icons.warning_amber_rounded),
-                      label: Text('Thu hồi'),
-                    ),
-                    ButtonSegment(
                       value: 'status',
                       icon: Icon(Icons.flag_circle_outlined),
                       label: Text('Trạng thái'),
@@ -1217,7 +2435,6 @@ class _WorkflowSheetState extends State<_WorkflowSheet> {
                 const SizedBox(height: 16),
                 if (_mode == 'split') _buildSplitForm(),
                 if (_mode == 'merge') _buildMergeForm(),
-                if (_mode == 'recall') _buildRecallForm(),
                 if (_mode == 'status') _buildStatusForm(),
                 const SizedBox(height: 18),
                 FilledButton.icon(
@@ -1246,11 +2463,6 @@ class _WorkflowSheetState extends State<_WorkflowSheet> {
           controller: _splitQuantity,
           label: 'Số lượng tách',
           hint: 'Ví dụ: 25',
-          onChanged: (value) {
-            if (_childQuantity.text.trim().isEmpty) {
-              _childQuantity.text = value;
-            }
-          },
         ),
         const SizedBox(height: 12),
         TextField(
@@ -1260,12 +2472,6 @@ class _WorkflowSheetState extends State<_WorkflowSheet> {
             hintText: 'Để trống để hệ thống tự đặt tên',
             prefixIcon: Icon(Icons.inventory_2_outlined),
           ),
-        ),
-        const SizedBox(height: 12),
-        _NumberField(
-          controller: _childQuantity,
-          label: 'Số lượng lô con',
-          hint: 'Bằng số lượng tách nếu chỉ tạo một lô con',
         ),
         const SizedBox(height: 12),
         TextField(
@@ -1300,86 +2506,34 @@ class _WorkflowSheetState extends State<_WorkflowSheet> {
                 ),
               )
               .toList(),
-          onChanged: (value) => setState(() => _mergeTarget = value),
+          onChanged: (value) => setState(() {
+            _mergeTarget = value;
+            _mergeTargetSourceQuantity.text =
+                value == null ? '' : _formatQuantity(value.currentQuantity);
+          }),
           decoration: const InputDecoration(
-            labelText: 'Lô gộp cùng',
+            labelText: 'Lô sẽ gộp vào lô hiện tại',
             prefixIcon: Icon(Icons.inventory_rounded),
           ),
+        ),
+        const SizedBox(height: 12),
+        _NumberField(
+          controller: _mergeTargetSourceQuantity,
+          label: 'Số lượng lấy từ lô này',
+          hint: 'Để trống để gộp toàn bộ tồn',
         ),
         const SizedBox(height: 12),
         TextField(
           controller: _mergeName,
           decoration: const InputDecoration(
-            labelText: 'Tên lô sau gộp',
-            hintText: 'Để trống để hệ thống tự đặt tên',
+            labelText: 'Tên lô hiện tại sau gộp',
+            hintText: 'Để trống để giữ tên hiện tại',
             prefixIcon: Icon(Icons.label_outline_rounded),
           ),
         ),
         const SizedBox(height: 12),
-        _NumberField(
-          controller: _mergeQuantity,
-          label: 'Số lượng sau gộp',
-          hint: 'Để trống để dùng toàn bộ tồn của 2 lô',
-        ),
-        const SizedBox(height: 12),
         TextField(
           controller: _mergeNote,
-          minLines: 2,
-          maxLines: 4,
-          decoration: const InputDecoration(
-            labelText: 'Ghi chú',
-            prefixIcon: Icon(Icons.notes_rounded),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildRecallForm() {
-    return Column(
-      children: [
-        _NumberField(
-          controller: _recallQuantity,
-          label: 'Số lượng thu hồi',
-          hint: 'Để trống để thu hồi toàn bộ tồn',
-        ),
-        const SizedBox(height: 12),
-        DropdownButtonFormField<String>(
-          initialValue: _recallStatus,
-          items: const [
-            DropdownMenuItem(
-              value: 'IN_PROGRESS',
-              child: Text('Đang thực hiện'),
-            ),
-            DropdownMenuItem(value: 'COMPLETED', child: Text('Hoàn tất')),
-          ],
-          onChanged: (value) => setState(() => _recallStatus = value ?? 'IN_PROGRESS'),
-          decoration: const InputDecoration(
-            labelText: 'Trạng thái thu hồi',
-            prefixIcon: Icon(Icons.flag_outlined),
-          ),
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: _recallLocation,
-          decoration: const InputDecoration(
-            labelText: 'Địa điểm',
-            prefixIcon: Icon(Icons.place_outlined),
-          ),
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: _recallReason,
-          minLines: 2,
-          maxLines: 4,
-          decoration: const InputDecoration(
-            labelText: 'Lý do thu hồi',
-            prefixIcon: Icon(Icons.report_problem_outlined),
-          ),
-        ),
-        const SizedBox(height: 12),
-        TextField(
-          controller: _recallNote,
           minLines: 2,
           maxLines: 4,
           decoration: const InputDecoration(
@@ -1447,9 +2601,9 @@ class _WorkflowSheetState extends State<_WorkflowSheet> {
   List<String> _nextStatusOptions() {
     switch (widget.batch.status) {
       case 'draft':
-        return const ['active', 'recalled'];
+        return const ['active'];
       case 'active':
-        return const ['completed', 'recalled'];
+        return const ['completed'];
       default:
         return const [];
     }

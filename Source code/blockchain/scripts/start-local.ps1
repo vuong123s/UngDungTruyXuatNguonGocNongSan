@@ -69,9 +69,29 @@ if ($contractAddress) {
 }
 
 if (-not $contractReady) {
-  & npx.cmd hardhat run --no-compile scripts/deploy.ts --network localhost
+  $deployOutput = & npx.cmd hardhat run --no-compile scripts/deploy.ts --network localhost
   if ($LASTEXITCODE -ne 0) {
     throw 'Smart contract deployment failed.'
+  }
+
+  $newAddress = $deployOutput |
+    Where-Object { $_ -match '^CONTRACT_ADDRESS=' } |
+    Select-Object -Last 1
+  if (-not $newAddress) {
+    throw 'Smart contract deployment did not return CONTRACT_ADDRESS.'
+  }
+
+  $contractAddress = ($newAddress -split '=', 2)[1].Trim()
+  if (Test-Path $apiEnvPath) {
+    $envLines = Get-Content $apiEnvPath
+    if ($envLines -match '^CONTRACT_ADDRESS=') {
+      $envLines = $envLines | ForEach-Object {
+        if ($_ -match '^CONTRACT_ADDRESS=') { "CONTRACT_ADDRESS=$contractAddress" } else { $_ }
+      }
+    } else {
+      $envLines += "CONTRACT_ADDRESS=$contractAddress"
+    }
+    Set-Content -LiteralPath $apiEnvPath -Value $envLines -Encoding utf8
   }
 }
 

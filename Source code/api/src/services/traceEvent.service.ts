@@ -13,6 +13,7 @@ import {
   hashEventData,
   createBatchOnChain,
   batchExistsOnChain,
+  assertContractDeployed,
 } from './blockchain.service';
 import { notifyTraceEventAdded } from './notification.service';
 import env from '../config/env';
@@ -39,7 +40,8 @@ const blockchainErrorMessage = (error: any): string => {
 
   if (
     normalized.includes('could not decode result data') ||
-    normalized.includes('contract runner does not support')
+    normalized.includes('contract runner does not support') ||
+    normalized.includes('no data present')
   ) {
     return 'Không tìm thấy smart contract tại địa chỉ đã cấu hình. Hãy deploy lại contract và cập nhật CONTRACT_ADDRESS.';
   }
@@ -219,6 +221,7 @@ export const createTraceEvent = async (
   }
 
   try {
+    await assertContractDeployed();
     const existsOnChain = await batchExistsOnChain(batchId);
     if (!existsOnChain) {
       await createBatchOnChain(batchId);
@@ -398,6 +401,13 @@ export const retryTraceEvent = async (
   const coreData = buildCoreData(lockedEvent);
 
   try {
+    if (lockedEvent.eventType === 'STATUS_UPDATE') {
+      throw new BadRequestError(
+        'Sự kiện chuyển trạng thái chỉ lưu off-chain; smart contract hiện tại không hỗ trợ ghi loại sự kiện này.'
+      );
+    }
+
+    await assertContractDeployed();
     const existsOnChain = await batchExistsOnChain(lockedEvent.batchId);
     if (!existsOnChain) {
       await createBatchOnChain(lockedEvent.batchId);

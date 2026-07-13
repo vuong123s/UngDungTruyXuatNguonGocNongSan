@@ -1,3 +1,4 @@
+import 'package:app/screens/account_screen.dart';
 import 'package:app/screens/camera_management_screen.dart';
 import 'package:app/screens/add_event_screen.dart';
 import 'package:app/screens/create_product_screen.dart';
@@ -8,12 +9,12 @@ import 'package:app/screens/disease_detection_screen.dart';
 import 'package:app/screens/management_hub_screen.dart';
 import 'package:app/screens/product_trash_screen.dart';
 import 'package:app/models/batch.dart';
-import 'package:app/screens/home_screen.dart';
 import 'package:app/screens/login_screen.dart';
 import 'package:app/screens/notifications_screen.dart';
 import 'package:app/screens/qr_scanner_screen.dart';
 import 'package:app/screens/register_screen.dart';
-import 'package:app/screens/timeline_screen.dart';
+import 'package:app/screens/timeline_dashboard_screen.dart';
+import 'package:app/screens/welcome_screen.dart';
 import 'package:app/widgets/app_tab_scaffold.dart';
 import 'package:flutter/material.dart';
 
@@ -29,6 +30,7 @@ class AppRouter {
   static const addEvent = '/add-event';
   static const createProduct = '/create-product';
   static const notifications = '/notifications';
+  static const account = '/account';
   static const cameras = '/cameras';
   static const management = '/management';
   static const editProduct = '/edit-product';
@@ -40,7 +42,7 @@ class AppRouter {
 
     switch (uri.path) {
       case home:
-        return _page(const HomeScreen());
+        return _page(const WelcomeScreen());
 
       case timeline:
       case trace:
@@ -49,7 +51,7 @@ class AppRouter {
             uri.queryParameters['productId'] ??
             (settings.arguments as String?);
         return _tabPage(
-          TimelineScreen(initialBatchId: batchId),
+          TimelineDashboardScreen(initialBatchId: batchId),
           AppTab.journal,
         );
 
@@ -82,7 +84,10 @@ class AppRouter {
         return _tabPage(const CreateProductScreen(), AppTab.journal);
 
       case notifications:
-        return _page(const NotificationsScreen());
+        return _tabPage(const NotificationsScreen(), AppTab.farmingArea);
+
+      case account:
+        return _tabPage(const AccountScreen(), AppTab.account);
 
       case cameras:
         final batchId =
@@ -115,7 +120,7 @@ class AppRouter {
         return _tabPage(const ProductTrashScreen(), AppTab.trash);
 
       default:
-        return _page(const HomeScreen());
+        return _page(const WelcomeScreen());
     }
   }
 

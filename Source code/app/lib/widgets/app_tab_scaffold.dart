@@ -2,7 +2,6 @@ import 'dart:ui';
 
 import 'package:app/core/router.dart';
 import 'package:app/core/theme.dart';
-import 'package:app/providers/providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -25,7 +24,7 @@ class AppTabScaffold extends StatelessWidget {
   }
 }
 
-enum AppTab { journal, scanner, quality, farmingArea, disease, trash }
+enum AppTab { journal, scanner, quality, farmingArea, disease, trash, account }
 
 class AppBottomTabBar extends ConsumerWidget {
   const AppBottomTabBar({super.key, required this.selectedTab});
@@ -34,54 +33,43 @@ class AppBottomTabBar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final authData = ref.watch(authStateProvider);
-    final role =
-        (authData?['user']?['role'] ?? authData?['role'] ?? '').toString();
-    final canManageTrash = role == 'admin' || role == 'manager';
     final tabs = [
       _AppTabItemData(
         tab: AppTab.journal,
-        icon: Icons.add_circle_outline_rounded,
-        label: 'Nhật ký',
+        icon: Icons.home_outlined,
+        label: 'Trang chủ',
         color: const Color(0xFF2F8F4D),
         route: AppRouter.farmer,
       ),
       _AppTabItemData(
         tab: AppTab.scanner,
-        icon: Icons.qr_code_scanner_rounded,
-        label: 'Quét QR',
-        color: const Color(0xFF406CBE),
-        route: AppRouter.scanner,
+        icon: Icons.inventory_2_outlined,
+        label: 'Lô của tôi',
+        color: const Color(0xFF2F8F4D),
+        route: AppRouter.farmer,
       ),
       _AppTabItemData(
         tab: AppTab.quality,
-        icon: Icons.science_outlined,
-        label: 'Kiểm nghiệm',
-        color: const Color(0xFF7A5BB8),
-        route: '${AppRouter.management}?tab=0',
+        icon: Icons.description_outlined,
+        label: 'Nhật ký',
+        color: const Color(0xFF2F8F4D),
+        route: AppRouter.addEvent,
       ),
       _AppTabItemData(
         tab: AppTab.farmingArea,
-        icon: Icons.landscape_outlined,
-        label: 'Vùng trồng',
-        color: const Color(0xFFB2762C),
-        route: '${AppRouter.management}?tab=1',
+        icon: Icons.notifications_none_rounded,
+        label: 'Thông báo',
+        color: const Color(0xFF2F8F4D),
+        route: AppRouter.notifications,
+        badge: 3,
       ),
       _AppTabItemData(
-        tab: AppTab.disease,
-        icon: Icons.health_and_safety_outlined,
-        label: 'Bệnh cây',
-        color: const Color(0xFFB83232),
-        route: AppRouter.diseaseDetection,
+        tab: AppTab.account,
+        icon: Icons.person_outline_rounded,
+        label: 'Tài khoản',
+        color: const Color(0xFF2F8F4D),
+        route: AppRouter.account,
       ),
-      if (canManageTrash)
-        _AppTabItemData(
-          tab: AppTab.trash,
-          icon: Icons.delete_outline_rounded,
-          label: 'Thùng rác',
-          color: const Color(0xFF64748B),
-          route: AppRouter.productTrash,
-        ),
     ];
 
     return SafeArea(
@@ -102,9 +90,9 @@ class AppBottomTabBar extends ConsumerWidget {
             filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
             child: Container(
               width: double.infinity,
-              padding: const EdgeInsets.fromLTRB(10, 8, 10, 7),
+              padding: const EdgeInsets.fromLTRB(10, 5, 10, 10),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.78),
+                color: Colors.white.withValues(alpha: 0.92),
                 border: Border(
                   top: BorderSide(color: Colors.white.withValues(alpha: 0.84)),
                 ),
@@ -141,6 +129,7 @@ class _AppTabItemData {
     required this.label,
     required this.color,
     required this.route,
+    this.badge = 0,
   });
 
   final AppTab tab;
@@ -148,6 +137,7 @@ class _AppTabItemData {
   final String label;
   final Color color;
   final String route;
+  final int badge;
 }
 
 class _AppBottomTabItem extends StatelessWidget {
@@ -164,9 +154,6 @@ class _AppBottomTabItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final foreground = selected ? item.color : AppColors.muted;
-    final iconBackground = selected
-        ? item.color.withValues(alpha: 0.14)
-        : Colors.transparent;
     final labelWeight = selected ? FontWeight.w900 : FontWeight.w700;
 
     return Semantics(
@@ -182,22 +169,55 @@ class _AppBottomTabItem extends StatelessWidget {
             borderRadius: BorderRadius.circular(18),
             onTap: onTap,
             child: SizedBox(
-              height: 64,
+              height: 68,
               child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   AnimatedContainer(
                     duration: const Duration(milliseconds: 180),
                     curve: Curves.easeOut,
-                    width: 36,
-                    height: 30,
+                    width: selected ? 44 : 0,
+                    height: 3,
                     decoration: BoxDecoration(
-                      color: iconBackground,
-                      borderRadius: BorderRadius.circular(16),
+                      color: selected ? item.color : Colors.transparent,
+                      borderRadius: BorderRadius.circular(999),
                     ),
-                    child: Icon(item.icon, color: foreground, size: 21),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 7),
+                  SizedBox(
+                    width: 38,
+                    height: 30,
+                    child: Stack(
+                      clipBehavior: Clip.none,
+                      alignment: Alignment.center,
+                      children: [
+                        Icon(item.icon, color: foreground, size: 25),
+                        if (item.badge > 0)
+                          Positioned(
+                            right: -4,
+                            top: -5,
+                            child: Container(
+                              width: 19,
+                              height: 19,
+                              alignment: Alignment.center,
+                              decoration: const BoxDecoration(
+                                color: Color(0xFFFF4B4B),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Text(
+                                item.badge > 9 ? '9+' : '${item.badge}',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 9,
+                                  fontWeight: FontWeight.w900,
+                                  height: 1,
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 3),
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 2),
                     child: FittedBox(
@@ -208,22 +228,11 @@ class _AppBottomTabItem extends StatelessWidget {
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           color: foreground,
-                          fontSize: 10.5,
+                          fontSize: 10,
                           fontWeight: labelWeight,
                           height: 1.0,
                         ),
                       ),
-                    ),
-                  ),
-                  const SizedBox(height: 5),
-                  AnimatedContainer(
-                    duration: const Duration(milliseconds: 180),
-                    curve: Curves.easeOut,
-                    width: selected ? 28 : 4,
-                    height: 3,
-                    decoration: BoxDecoration(
-                      color: selected ? item.color : Colors.transparent,
-                      borderRadius: BorderRadius.circular(999),
                     ),
                   ),
                 ],

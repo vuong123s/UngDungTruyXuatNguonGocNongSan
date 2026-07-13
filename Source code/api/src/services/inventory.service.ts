@@ -4,6 +4,7 @@ import InventoryTransaction, {
   InventoryTransactionType,
 } from '../models/InventoryTransaction';
 import SupplyChainRecord from '../models/SupplyChainRecord';
+import TraceEvent from '../models/TraceEvent';
 import env from '../config/env';
 import generateQR from '../utils/qrcode';
 import { BadRequestError, NotFoundError, UnauthorizedError } from '../utils/errors';
@@ -26,10 +27,21 @@ const assertPositiveQuantity = (value: unknown, field = 'Số lượng') => {
   return roundQuantity(quantity);
 };
 
-const assertEqualQuantity = (left: number, right: number, message: string) => {
-  if (Math.abs(left - right) > EPSILON) {
+const assertOutputWithinInput = (input: number, output: number, message: string) => {
+  if (output - input > EPSILON) {
     throw new BadRequestError(message);
   }
+};
+
+const buildLossMetadata = (input: number, output: number, reason?: string) => {
+  const lossQuantity = roundQuantity(Math.max(input - output, 0));
+  return {
+    loss_quantity: lossQuantity,
+    loss_rate: input > 0 ? roundQuantity(lossQuantity / input) : 0,
+    loss_reason:
+      reason?.trim() ||
+      (lossQuantity > EPSILON ? 'Hao hụt khi phân loại, sơ chế hoặc đóng gói' : undefined),
+  };
 };
 
 const assertProductAccess = async (productId: string, userId: string, role: string) => {
@@ -69,6 +81,24 @@ const createTransaction = async (data: {
   InventoryTransaction.create({
     ...data,
     related_products: data.related_products || [],
+  });
+
+const createTimelineEvent = async (data: {
+  product: any;
+  description: string;
+  details?: Record<string, unknown>;
+  recorded_by: string;
+}) =>
+  TraceEvent.create({
+    product: data.product._id,
+    batchId: data.product._id.toString(),
+    eventType: 'STATUS_UPDATE',
+    description: data.description,
+    details: data.details || {},
+    images: [],
+    videos: [],
+    recorded_by: data.recorded_by,
+    onChainStatus: 'skipped',
   });
 
 const assignQRCode = async (product: any) => {
@@ -169,6 +199,7 @@ export const splitProduct = async (
       status?: 'draft' | 'active' | 'completed' | 'recalled';
     }>;
     note?: string;
+    loss_reason?: string;
   },
   userId: string,
   role: string
@@ -193,11 +224,12 @@ export const splitProduct = async (
   const childrenTotal = roundQuantity(
     normalizedChildren.reduce((sum, child) => sum + child.quantity, 0)
   );
-  assertEqualQuantity(
-    childrenTotal,
+  assertOutputWithinInput(
     splitQuantity,
-    `Tổng số lượng lô con (${childrenTotal}) phải bằng số lượng tách (${splitQuantity})`
+    childrenTotal,
+    `Tổng số lượng lô con (${childrenTotal}) không được lớn hơn số lượng tách (${splitQuantity})`
   );
+  const loss = buildLossMetadata(splitQuantity, childrenTotal, data.loss_reason);
 
   for (const child of normalizedChildren) {
     await assertFarmingAreaAccess(child.farming_area, userId, role);
@@ -210,6 +242,10 @@ export const splitProduct = async (
   const before = source.current_quantity || 0;
   source.current_quantity = roundQuantity(before - splitQuantity);
   source.initial_quantity = source.initial_quantity || before;
+  if (source.current_quantity <= EPSILON) {
+    source.current_quantity = 0;
+    source.status = 'completed';
+  }
   await source.save();
 
   const createdChildren = [];
@@ -263,7 +299,8 @@ export const splitProduct = async (
       balance_check: {
         input: splitQuantity,
         output: childrenTotal,
-        balanced: true,
+        balanced: Math.abs(splitQuantity - childrenTotal) <= EPSILON,
+        ...loss,
       },
       source: {
         product: source._id,
@@ -274,12 +311,46 @@ export const splitProduct = async (
         product: product._id,
         quantity: product.current_quantity,
       })),
+      loss,
     },
     created_by: userId,
   });
   const populatedSupplyChainRecord = await populateSupplyChainRecord(
     SupplyChainRecord.findById(supplyChainRecord._id)
   );
+
+  await Promise.all([
+    createTimelineEvent({
+      product: source,
+      description:
+        data.note || `Tách ${splitQuantity} ${source.unit || 'kg'} từ lô ${source.name}`,
+      details: {
+        operation: 'SPLIT_OUT',
+        quantity: splitQuantity,
+        unit: source.unit || 'kg',
+        balance_before: before,
+        balance_after: source.current_quantity,
+        children: createdChildren.map((product) => product._id.toString()),
+        loss,
+      },
+      recorded_by: userId,
+    }),
+    ...createdChildren.map((product) =>
+      createTimelineEvent({
+        product,
+        description:
+          data.note ||
+          `Lô được tách từ ${source.name}: ${product.current_quantity} ${product.unit || source.unit || 'kg'}`,
+        details: {
+          operation: 'SPLIT_IN',
+          source_product: source._id.toString(),
+          quantity: product.current_quantity,
+          unit: product.unit || source.unit || 'kg',
+        },
+        recorded_by: userId,
+      })
+    ),
+  ]);
 
   return {
     source,
@@ -289,7 +360,8 @@ export const splitProduct = async (
     balance: {
       input: splitQuantity,
       output: childrenTotal,
-      balanced: true,
+      balanced: Math.abs(splitQuantity - childrenTotal) <= EPSILON,
+      ...loss,
     },
   };
 };
@@ -298,6 +370,7 @@ export const mergeProducts = async (
   data: {
     sources: Array<{ product: string; quantity?: number }>;
     target?: {
+      product?: string;
       name?: string;
       category?: string;
       type?: 'Plant' | 'Animal';
@@ -312,17 +385,27 @@ export const mergeProducts = async (
     };
     target_quantity?: number;
     note?: string;
+    loss_reason?: string;
   },
   userId: string,
   role: string
 ) => {
   const sources = data.sources || [];
-  if (sources.length < 2) {
+  const mergeIntoExisting = Boolean(data.target?.product);
+
+  if (sources.length < (mergeIntoExisting ? 1 : 2)) {
     throw new BadRequestError('Gộp lô cần ít nhất 2 lô nguồn');
   }
   const uniqueSourceIds = new Set(sources.map((source) => source.product));
   if (uniqueSourceIds.size !== sources.length) {
     throw new BadRequestError('Không được chọn trùng lô nguồn khi gộp');
+  }
+
+  const existingTarget = mergeIntoExisting
+    ? await assertProductAccess(data.target!.product!, userId, role)
+    : null;
+  if (existingTarget && uniqueSourceIds.has(existingTarget._id.toString())) {
+    throw new BadRequestError('Lô nhận gộp không được đồng thời là lô nguồn bị trừ tồn');
   }
 
   const sourceProducts: any[] = [];
@@ -331,7 +414,10 @@ export const mergeProducts = async (
     sourceProducts.push(product);
   }
 
-  const unit = data.target?.unit || sourceProducts[0].unit || 'kg';
+  const unit = data.target?.unit || existingTarget?.unit || sourceProducts[0].unit || 'kg';
+  if (existingTarget && (existingTarget.unit || 'kg') !== unit) {
+    throw new BadRequestError('Lô nhận gộp phải cùng đơn vị tính với lô nguồn');
+  }
   for (const product of sourceProducts) {
     if ((product.unit || 'kg') !== unit) {
       throw new BadRequestError('Các lô gộp phải cùng đơn vị tính');
@@ -357,37 +443,59 @@ export const mergeProducts = async (
     data.target_quantity === undefined
       ? totalInput
       : assertPositiveQuantity(data.target_quantity, 'Số lượng lô sau gộp');
-  assertEqualQuantity(
+  assertOutputWithinInput(
     totalInput,
     targetQuantity,
-    `Tổng số lượng lô nguồn (${totalInput}) phải bằng số lượng lô sau gộp (${targetQuantity})`
+    `Số lượng lô sau gộp (${targetQuantity}) không được lớn hơn tổng số lượng lô nguồn (${totalInput})`
   );
+  const loss = buildLossMetadata(totalInput, targetQuantity, data.loss_reason);
 
   const first = sourceProducts[0];
   await assertFarmingAreaAccess(data.target?.farming_area, userId, role);
-  const targetProduct = await Product.create({
-    name: data.target?.name || `${first.name} - lô gộp`,
-    category: data.target?.category || first.category,
-    type: data.target?.type || first.type,
-    description: data.target?.description || first.description,
-    origin: data.target?.origin || first.origin,
-    cultivation_time: data.target?.cultivation_time || first.cultivation_time,
-    images: data.target?.images || first.images || [],
-    live_cameras: data.target?.live_cameras || [],
-    farming_area: data.target?.farming_area || first.farming_area,
-    initial_quantity: targetQuantity,
-    current_quantity: targetQuantity,
-    unit,
-    source_products: sourceProducts.map((product) => product._id),
-    status: data.target?.status || 'active',
-    created_by: userId,
-  });
-  await assignQRCode(targetProduct);
+  const targetBefore = existingTarget?.current_quantity || 0;
+  const targetProduct =
+    existingTarget ||
+    (await Product.create({
+      name: data.target?.name || `${first.name} - lô gộp`,
+      category: data.target?.category || first.category,
+      type: data.target?.type || first.type,
+      description: data.target?.description || first.description,
+      origin: data.target?.origin || first.origin,
+      cultivation_time: data.target?.cultivation_time || first.cultivation_time,
+      images: data.target?.images || first.images || [],
+      live_cameras: data.target?.live_cameras || [],
+      farming_area: data.target?.farming_area || first.farming_area,
+      initial_quantity: targetQuantity,
+      current_quantity: targetQuantity,
+      unit,
+      source_products: sourceProducts.map((product) => product._id),
+      status: data.target?.status || 'active',
+      created_by: userId,
+    }));
+
+  if (existingTarget) {
+    if (data.target?.name?.trim()) targetProduct.name = data.target.name.trim();
+    targetProduct.current_quantity = roundQuantity(targetBefore + targetQuantity);
+    targetProduct.initial_quantity = targetProduct.initial_quantity || targetBefore;
+    targetProduct.source_products = Array.from(
+      new Set([
+        ...(targetProduct.source_products || []).map((id: any) => id.toString()),
+        ...sourceProducts.map((product) => product._id.toString()),
+      ])
+    ) as any;
+    await targetProduct.save();
+  } else {
+    await assignQRCode(targetProduct);
+  }
 
   await Promise.all(
     sourceProducts.map(async (product, index) => {
       const before = product.current_quantity || 0;
       product.current_quantity = roundQuantity(before - quantities[index]);
+      if (product.current_quantity <= EPSILON) {
+        product.current_quantity = 0;
+        product.status = 'completed';
+      }
       await product.save();
       return createTransaction({
         product: product._id.toString(),
@@ -409,8 +517,8 @@ export const mergeProducts = async (
     type: 'MERGE_IN',
     quantity: targetQuantity,
     unit,
-    balance_before: 0,
-    balance_after: targetQuantity,
+    balance_before: targetBefore,
+    balance_after: existingTarget ? targetProduct.current_quantity : targetQuantity,
     related_products: sourceProducts.map((product) => product._id.toString()),
     note: data.note,
     metadata: { operation: 'MERGE' },
@@ -422,7 +530,7 @@ export const mergeProducts = async (
     related_products: sourceProducts.map((product) => product._id),
     operation_type: 'MERGE',
     title: 'Gộp lô',
-    description: data.note || `Gộp ${sources.length} lô thành ${targetProduct.name}`,
+    description: data.note || `Gộp ${sources.length} lô vào ${targetProduct.name}`,
     status: 'COMPLETED',
     quantity: targetQuantity,
     unit,
@@ -430,22 +538,64 @@ export const mergeProducts = async (
       balance_check: {
         input: totalInput,
         output: targetQuantity,
-        balanced: true,
+        balanced: Math.abs(totalInput - targetQuantity) <= EPSILON,
+        ...loss,
       },
       target: {
         product: targetProduct._id,
         quantity: targetQuantity,
+        balance_before: targetBefore,
+        balance_after: existingTarget ? targetProduct.current_quantity : targetQuantity,
+        mode: existingTarget ? 'MERGE_INTO_EXISTING' : 'CREATE_MERGED_BATCH',
       },
       sources: sourceProducts.map((product, index) => ({
         product: product._id,
         quantity: quantities[index],
       })),
+      loss,
     },
     created_by: userId,
   });
   const populatedSupplyChainRecord = await populateSupplyChainRecord(
     SupplyChainRecord.findById(supplyChainRecord._id)
   );
+
+  await Promise.all([
+    createTimelineEvent({
+      product: targetProduct,
+      description: data.note || `Gộp ${sources.length} lô vào ${targetProduct.name}`,
+      details: {
+        operation: 'MERGE_IN',
+        quantity: targetQuantity,
+        unit,
+        balance_before: targetBefore,
+        balance_after: existingTarget ? targetProduct.current_quantity : targetQuantity,
+        sources: sourceProducts.map((product, index) => ({
+          product: product._id.toString(),
+          quantity: quantities[index],
+        })),
+        loss,
+      },
+      recorded_by: userId,
+    }),
+    ...sourceProducts.map((product, index) =>
+      createTimelineEvent({
+        product,
+        description:
+          data.note ||
+          `Gộp ${quantities[index]} ${unit} từ ${product.name} vào ${targetProduct.name}`,
+        details: {
+          operation: 'MERGE_OUT',
+          target_product: targetProduct._id.toString(),
+          quantity: quantities[index],
+          unit,
+          balance_after: product.current_quantity,
+          completed: product.status === 'completed',
+        },
+        recorded_by: userId,
+      })
+    ),
+  ]);
 
   return {
     target: targetProduct,
@@ -455,7 +605,8 @@ export const mergeProducts = async (
     balance: {
       input: totalInput,
       output: targetQuantity,
-      balanced: true,
+      balanced: Math.abs(totalInput - targetQuantity) <= EPSILON,
+      ...loss,
     },
   };
 };

@@ -40,6 +40,34 @@ class BatchService {
 
   final Dio _dio;
 
+  Never _handleDioError(DioException error, String defaultMessage) {
+    final responseData = error.response?.data;
+    if (responseData is Map<String, dynamic>) {
+      final message =
+          responseData['msg'] ??
+          responseData['message'] ??
+          responseData['error'];
+      if (message != null && message.toString().trim().isNotEmpty) {
+        throw _BatchServiceException(message.toString());
+      }
+    }
+
+    if (error.type == DioExceptionType.connectionError ||
+        error.type == DioExceptionType.connectionTimeout) {
+      throw const _BatchServiceException(
+        'Không kết nối được tới máy chủ API. Vui lòng kiểm tra lại kết nối.',
+      );
+    }
+
+    if (error.type == DioExceptionType.receiveTimeout) {
+      throw const _BatchServiceException(
+        'Máy chủ phản hồi quá lâu. Vui lòng thử lại sau.',
+      );
+    }
+
+    throw _BatchServiceException(defaultMessage);
+  }
+
   Future<List<Batch>> getBatches() async {
     final response = await _dio.get('/products/my/products');
     final payload = response.data;
@@ -68,12 +96,16 @@ class BatchService {
       batchCode: (product['batch_code'] ?? '').toString(),
       productName: (product['name'] ?? '').toString(),
       productType: (product['category'] ?? product['type'] ?? '').toString(),
+      productKind: (product['type'] ?? 'Plant').toString(),
+      farmingAreaId: _objectId(product['farming_area']),
       origin: (product['origin'] ?? '').toString(),
+      cultivationTime: (product['cultivation_time'] ?? '').toString(),
       description: (product['description'] ?? '').toString(),
       status: (product['status'] ?? 'active').toString(),
       initialQuantity: _numToDouble(product['initial_quantity']),
       currentQuantity: _numToDouble(product['current_quantity']),
       unit: (product['unit'] ?? 'kg').toString(),
+      imageUrls: _mapMediaUrls(product['images']),
       qrCodeUrl: (product['qrcode'] ?? '').toString(),
       liveCameras: _mapLiveCameras(product['live_cameras']),
       events: events
@@ -98,110 +130,109 @@ class BatchService {
           const <String, dynamic>{};
       return _mapTraceEvent(event);
     } on DioException catch (error) {
-      final responseData = error.response?.data;
-      if (responseData is Map<String, dynamic>) {
-        final message =
-            responseData['msg'] ??
-            responseData['message'] ??
-            responseData['error'];
-        if (message != null && message.toString().trim().isNotEmpty) {
-          throw _BatchServiceException(message.toString());
-        }
-      }
-
-      if (error.type == DioExceptionType.connectionError ||
-          error.type == DioExceptionType.connectionTimeout) {
-        throw const _BatchServiceException(
-          'Không kết nối được tới máy chủ API. Vui lòng kiểm tra lại kết nối.',
-        );
-      }
-
-      if (error.type == DioExceptionType.receiveTimeout) {
-        throw const _BatchServiceException(
-          'Blockchain phản hồi quá lâu. Vui lòng làm mới trạng thái trước khi thử lại.',
-        );
-      }
-
-      throw _BatchServiceException(
-        error.message ?? 'Không thể ghi sự kiện lên blockchain.',
-      );
+      _handleDioError(error, 'Không thể ghi sự kiện lên blockchain.');
     }
   }
 
   Future<List<Product>> getTrashProducts() async {
-    final response = await _dio.get('/products/trash');
-    final payload = response.data;
-    final items = payload is Map<String, dynamic>
-        ? (payload['products'] as List<dynamic>? ?? const [])
-        : const <dynamic>[];
+    try {
+      final response = await _dio.get('/products/trash');
+      final payload = response.data;
+      final items = payload is Map<String, dynamic>
+          ? (payload['products'] as List<dynamic>? ?? const [])
+          : const <dynamic>[];
 
-    return items
-        .whereType<Map<String, dynamic>>()
-        .map(Product.fromJson)
-        .toList();
+      return items
+          .whereType<Map<String, dynamic>>()
+          .map(Product.fromJson)
+          .toList();
+    } on DioException catch (error) {
+      _handleDioError(error, 'Không tải được danh sách lô đã lưu trữ.');
+    }
   }
 
   Future<Product> restoreProduct(String productId) async {
-    final response = await _dio.post('/products/$productId/restore');
-    final payload = response.data as Map<String, dynamic>;
-    final product = payload['product'] as Map<String, dynamic>? ?? const {};
-    return Product.fromJson(product);
+    try {
+      final response = await _dio.post('/products/$productId/restore');
+      final payload = response.data as Map<String, dynamic>;
+      final product = payload['product'] as Map<String, dynamic>? ?? const {};
+      return Product.fromJson(product);
+    } on DioException catch (error) {
+      _handleDioError(error, 'Không thể khôi phục lô này.');
+    }
   }
 
   Future<void> permanentDeleteProduct(String productId) async {
-    await _dio.delete('/products/$productId/permanent');
+    try {
+      await _dio.delete('/products/$productId/permanent');
+    } on DioException catch (error) {
+      _handleDioError(error, 'Không thể xóa vĩnh viễn lô này.');
+    }
   }
 
   Future<void> deleteProduct(String productId) async {
-    await _dio.delete('/products/$productId');
+    try {
+      await _dio.delete('/products/$productId');
+    } on DioException catch (error) {
+      _handleDioError(error, 'Không thể chuyển lô vào thùng rác.');
+    }
   }
 
   Future<void> splitProduct({
     required String productId,
     required double quantity,
     required String childName,
-    required double childQuantity,
     String? note,
   }) async {
-    await _dio.post(
-      '/products/$productId/split',
-      data: {
-        'quantity': quantity,
-        'note': note,
-        'children': [
-          {
-            if (childName.trim().isNotEmpty) 'name': childName.trim(),
-            'quantity': childQuantity,
-          },
-        ],
-      },
-    );
+    try {
+      await _dio.post(
+        '/products/$productId/split',
+        data: {
+          'quantity': quantity,
+          'note': note,
+          'loss_reason': note,
+          'children': [
+            {
+              if (childName.trim().isNotEmpty) 'name': childName.trim(),
+              'quantity': quantity,
+            },
+          ],
+        },
+      );
+    } on DioException catch (error) {
+      _handleDioError(error, 'Không thể tách lô. Vui lòng kiểm tra lại số lượng.');
+    }
   }
 
   Future<void> mergeProducts({
-    required String sourceA,
-    required String sourceB,
+    required String targetProductId,
+    required String sourceProductId,
+    double? sourceQuantity,
     String? targetName,
-    double? targetQuantity,
     String? note,
   }) async {
     final cleanTargetName = (targetName ?? '').trim();
+    final sourcePayload = <String, dynamic>{'product': sourceProductId};
+    if (sourceQuantity != null) sourcePayload['quantity'] = sourceQuantity;
+
     final data = <String, dynamic>{
-      'sources': [
-        {'product': sourceA},
-        {'product': sourceB},
-      ],
+      'sources': [sourcePayload],
       'target': {
+        'product': targetProductId,
         if (cleanTargetName.isNotEmpty) 'name': cleanTargetName,
       },
       'note': note,
+      'loss_reason': note,
     };
-    if (targetQuantity != null) data['target_quantity'] = targetQuantity;
 
-    await _dio.post(
-      '/products/merge',
-      data: data,
-    );
+    try {
+      await _dio.post(
+        '/products/merge',
+        data: data,
+      );
+    } on DioException catch (error) {
+      _handleDioError(error, 'Không thể gộp lô. Vui lòng kiểm tra lại số lượng.');
+    }
   }
 
   Future<void> recallProduct({
@@ -232,10 +263,14 @@ class BatchService {
     required String type,
     required String description,
     required String origin,
+    String? cultivationTime,
     required double initialQuantity,
     required String unit,
     String? farmingArea,
+    List<XFile> images = const [],
   }) async {
+    final imagePayload = await _uploadProductImages(images);
+
     final response = await _dio.post(
       '/products',
       data: {
@@ -244,9 +279,12 @@ class BatchService {
         'type': type,
         'description': description.trim(),
         'origin': origin.trim(),
+        if (cultivationTime != null && cultivationTime.trim().isNotEmpty)
+          'cultivation_time': cultivationTime.trim(),
         'initial_quantity': initialQuantity,
         'current_quantity': initialQuantity,
         'unit': unit.trim().isEmpty ? 'kg' : unit.trim(),
+        if (imagePayload.isNotEmpty) 'images': imagePayload,
         if (farmingArea != null && farmingArea.trim().isNotEmpty)
           'farming_area': farmingArea.trim(),
       },
@@ -260,16 +298,34 @@ class BatchService {
     required String productId,
     required String name,
     required String category,
+    String? type,
     required String description,
     required String origin,
+    String? cultivationTime,
+    String? farmingArea,
+    List<String>? existingImageUrls,
+    List<XFile> newImages = const [],
   }) async {
+    final imagePayload = [
+      for (final url in existingImageUrls ?? const <String>[])
+        _mediaPayloadFromUrl(url),
+      ...await _uploadProductImages(newImages),
+    ];
+
     final response = await _dio.patch(
       '/products/$productId',
       data: {
         'name': name.trim(),
         'category': category.trim(),
+        if (type != null && type.trim().isNotEmpty) 'type': type.trim(),
         'description': description.trim(),
         'origin': origin.trim(),
+        if (cultivationTime != null && cultivationTime.trim().isNotEmpty)
+          'cultivation_time': cultivationTime.trim(),
+        if (farmingArea != null && farmingArea.trim().isNotEmpty)
+          'farming_area': farmingArea.trim(),
+        if (existingImageUrls != null || newImages.isNotEmpty)
+          'images': imagePayload,
       },
     );
     final payload = response.data as Map<String, dynamic>;
@@ -367,12 +423,16 @@ class BatchService {
       batchCode: (product['batch_code'] ?? '').toString(),
       productName: (product['name'] ?? '').toString(),
       productType: (product['category'] ?? product['type'] ?? '').toString(),
+      productKind: (product['type'] ?? 'Plant').toString(),
+      farmingAreaId: _objectId(product['farming_area']),
       origin: (product['origin'] ?? '').toString(),
+      cultivationTime: (product['cultivation_time'] ?? '').toString(),
       description: (product['description'] ?? '').toString(),
       status: (product['status'] ?? 'active').toString(),
       initialQuantity: _numToDouble(product['initial_quantity']),
       currentQuantity: _numToDouble(product['current_quantity']),
       unit: (product['unit'] ?? 'kg').toString(),
+      imageUrls: _mapMediaUrls(product['images']),
       qrCodeUrl: (product['qrcode'] ?? '').toString(),
       liveCameras: _mapLiveCameras(product['live_cameras']),
       events: events
@@ -392,9 +452,27 @@ class BatchService {
         .toList();
   }
 
+  List<String> _mapMediaUrls(dynamic raw) {
+    if (raw is! List) return const [];
+
+    return raw
+        .map(
+          (item) => item is Map<String, dynamic>
+              ? _resolveMediaUrl((item['path'] ?? item['url'] ?? '').toString())
+              : _resolveMediaUrl(item.toString()),
+        )
+        .where((item) => item.isNotEmpty)
+        .toList();
+  }
+
   double _numToDouble(dynamic raw) {
     if (raw is num) return raw.toDouble();
     return double.tryParse(raw?.toString() ?? '') ?? 0;
+  }
+
+  String _objectId(dynamic raw) {
+    if (raw is Map<String, dynamic>) return (raw['_id'] ?? raw['id'] ?? '').toString();
+    return (raw ?? '').toString();
   }
 
   Future<List<LiveCamera>> getProductCameras(String productId) async {
@@ -525,6 +603,32 @@ class BatchService {
         mimeType: mimeType,
       );
     }).toList();
+  }
+
+  Future<List<Map<String, dynamic>>> _uploadProductImages(
+    List<XFile> images,
+  ) async {
+    if (images.isEmpty) return const [];
+
+    final uploaded = await _uploadMediaFiles(images);
+    return uploaded
+        .where((item) => item.mediaType == 'image')
+        .map((item) => item.toTracePayload())
+        .toList();
+  }
+
+  Map<String, dynamic> _mediaPayloadFromUrl(String url) {
+    final uri = Uri.tryParse(url.trim());
+    final path = uri == null
+        ? url.trim()
+        : (uri.hasScheme ? uri.path : uri.toString());
+    final parts = path.split('/').where((part) => part.isNotEmpty).toList();
+    final filename = parts.isEmpty ? null : parts.last;
+
+    return {
+      'path': path.startsWith('/') ? path : '/$path',
+      'filename': filename ?? 'image',
+    };
   }
 
   String _resolveMediaUrl(String value) {
