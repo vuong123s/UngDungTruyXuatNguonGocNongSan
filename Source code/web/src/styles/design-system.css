@@ -47,8 +47,8 @@
   --agri-border-strong: var(--agri-neutral-300);
   --agri-focus: rgba(32, 157, 98, 0.24);
 
-  --agri-font-sans: Inter, "Noto Sans", "Segoe UI", Arial, sans-serif;
-  --agri-font-display: "Segoe UI", Inter, "Noto Sans", Arial, sans-serif;
+  --agri-font-sans: "Be Vietnam Pro", "Segoe UI", Arial, sans-serif;
+  --agri-font-display: "Be Vietnam Pro", "Segoe UI", Arial, sans-serif;
   --agri-font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
 
   --agri-text-xs: 0.75rem;
@@ -139,7 +139,9 @@ body {
   background: var(--agri-canvas);
   font-family: var(--agri-font-sans);
   font-size: var(--agri-text-sm);
+  font-weight: 400;
   line-height: 1.5;
+  font-variant-numeric: tabular-nums;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -271,7 +273,7 @@ a {
   color: var(--agri-text);
   font-family: var(--agri-font-display);
   font-weight: 750;
-  letter-spacing: -0.035em;
+  letter-spacing: -0.025em;
 }
 
 .ui-page-title {

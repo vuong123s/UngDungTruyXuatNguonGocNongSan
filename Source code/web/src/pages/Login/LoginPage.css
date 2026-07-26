@@ -9,7 +9,7 @@
   overflow: hidden;
   color: var(--agri-text, #102019);
   background: var(--agri-canvas-soft, #f8faf9);
-  font-family: var(--agri-font-sans, Inter, "Segoe UI", sans-serif);
+  font-family: var(--agri-font-sans, "Be Vietnam Pro", "Segoe UI", sans-serif);
 }
 
 .login-story {
@@ -134,7 +134,7 @@
   max-width: 12ch;
   margin: 1.45rem 0 1.25rem;
   color: #ffffff;
-  font-family: var(--agri-font-display, "Segoe UI", sans-serif);
+  font-family: var(--agri-font-display, "Be Vietnam Pro", "Segoe UI", sans-serif);
   font-size: clamp(3.15rem, 5.5vw, 5.9rem);
   font-weight: 760;
   letter-spacing: -0.065em;
@@ -143,7 +143,7 @@
 
 .login-story h1 em {
   color: #9fe4b9;
-  font-family: Georgia, "Times New Roman", serif;
+  font-family: var(--agri-font-display, "Be Vietnam Pro", "Segoe UI", sans-serif);
   font-weight: 400;
 }
 
@@ -219,7 +219,7 @@
   top: 27%;
   right: 3%;
   color: rgba(255, 255, 255, 0.045);
-  font-family: Georgia, serif;
+  font-family: var(--agri-font-display, "Be Vietnam Pro", "Segoe UI", sans-serif);
   font-size: clamp(13rem, 22vw, 24rem);
   line-height: 1;
   transform: rotate(-24deg);
@@ -296,7 +296,7 @@
 .login-card h2 {
   margin: 0.55rem 0 0.4rem;
   color: var(--agri-text, #102019);
-  font-family: var(--agri-font-display, "Segoe UI", sans-serif);
+  font-family: var(--agri-font-display, "Be Vietnam Pro", "Segoe UI", sans-serif);
   font-size: clamp(1.85rem, 3vw, 2.25rem);
   font-weight: 780;
   letter-spacing: -0.045em;

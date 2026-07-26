@@ -20,6 +20,7 @@ class _EditProductScreenState extends ConsumerState<EditProductScreen> {
     'Lúa',
     'Rau thủy canh',
     'Cà chua',
+    'Ớt chuông',
     'Sầu riêng',
     'Thanh long',
     'Cà phê',

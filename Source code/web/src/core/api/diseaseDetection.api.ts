@@ -1,12 +1,16 @@
 import axiosClient from './axiosClient';
-import type { DiseaseDetection, DiseaseRiskLevel } from '../types';
+import type {
+  DiseaseDetection,
+  DiseaseDetectionCapabilities,
+  DiseaseRiskLevel,
+} from '../types';
 
 export interface DiseaseDetectionInput {
   product: string;
   crop_name?: string;
   symptoms: string[];
   notes?: string;
-  images?: File[];
+  images: File[];
 }
 
 const toFormData = (data: DiseaseDetectionInput) => {
@@ -20,6 +24,11 @@ const toFormData = (data: DiseaseDetectionInput) => {
 };
 
 export const diseaseDetectionApi = {
+  getCapabilities: (productId?: string) =>
+    axiosClient.get<DiseaseDetectionCapabilities>(
+      '/disease-detections/capabilities',
+      { params: productId ? { product: productId } : undefined }
+    ),
   getAll: (params?: { product?: string; risk?: DiseaseRiskLevel }) =>
     axiosClient.get<{ detections: DiseaseDetection[]; count: number }>(
       '/disease-detections',

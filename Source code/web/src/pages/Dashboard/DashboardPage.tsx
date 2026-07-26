@@ -225,7 +225,7 @@ const ProductActions: React.FC<ProductActionsProps> = ({
   onArchive,
 }) => (
   <div className="dash-row-actions">
-    <Link className="dash-icon-button" to={`/trace/${product._id}`} title="Xem truy xuất" aria-label={`Xem truy xuất ${product.name}`}>
+    <Link className="dash-icon-button" to={`/products/${product._id}`} title="Chi tiết lô" aria-label={`Xem chi tiết ${product.name}`}>
       <Icon name="eye" size={17} />
     </Link>
     <button className="dash-icon-button" type="button" onClick={() => onQr(product)} title="Mã QR" aria-label={`Mở mã QR ${product.name}`}>
@@ -298,7 +298,7 @@ const ProductList: React.FC<Omit<ProductListProps, 'product'>> = ({
                     <div className="dash-product-cell">
                       <ProductThumb product={product} />
                       <div>
-                        <Link to={`/trace/${product._id}`}>{product.name}</Link>
+                        <Link to={`/products/${product._id}`}>{product.name}</Link>
                         <span>{product.category || product.type}</span>
                       </div>
                     </div>
@@ -344,7 +344,7 @@ const ProductList: React.FC<Omit<ProductListProps, 'product'>> = ({
                 <ProductThumb product={product} />
                 <div>
                   <small>#{startIndex + index + 1} · {product.batch_code || product._id.slice(-8).toUpperCase()}</small>
-                  <Link to={`/trace/${product._id}`}>{product.name}</Link>
+                  <Link to={`/products/${product._id}`}>{product.name}</Link>
                   <span>{product.category}</span>
                 </div>
                 <StatusBadge status={product.status} />
@@ -434,7 +434,7 @@ const JourneyCard: React.FC<{ product?: Product }> = ({ product }) => {
     <section className="dash-panel dash-journey-card">
       <div className="dash-panel__header">
         <div><p className="dash-eyebrow">Lô cập nhật gần nhất</p><h2>Hành trình chuỗi cung ứng</h2></div>
-        {product && <Link to={`/trace/${product._id}`}>Chi tiết <Icon name="arrow" size={15} /></Link>}
+        {product && <Link to={`/products/${product._id}`}>Chi tiết <Icon name="arrow" size={15} /></Link>}
       </div>
       {!product ? (
         <div className="dash-compact-empty">Chưa có lô để hiển thị hành trình.</div>

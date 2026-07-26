@@ -60,7 +60,7 @@ export const getPublicTrace = async (productId: string) => {
         .sort({ occurred_at: 1 }),
       DiseaseDetection.find({ product: productId })
         .select(
-          'product crop_name symptoms notes images candidates top_disease overall_risk model_version createdAt'
+          'product images candidates top_disease overall_risk model_version analysis_status inference_engine warnings createdAt'
         )
         .sort({ createdAt: -1 }),
     ]);

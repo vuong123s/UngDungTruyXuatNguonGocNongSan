@@ -33,7 +33,14 @@ class _FarmerDashboardScreenState extends ConsumerState<FarmerDashboardScreen> {
     final batchesAsync = ref.watch(batchListProvider);
     final authData = ref.watch(authStateProvider);
     final role =
-        (authData?['user']?['role'] ?? authData?['role'] ?? '').toString();
+        (authData?['user']?['role'] ?? authData?['role'] ?? '')
+            .toString()
+            .toLowerCase();
+    final canUseDiseaseDetection = const {
+      'admin',
+      'manager',
+      'farmer',
+    }.contains(role);
 
     return GlassPageBackground(
       child: SafeArea(
@@ -45,6 +52,7 @@ class _FarmerDashboardScreenState extends ConsumerState<FarmerDashboardScreen> {
               controller: _searchController,
               onChanged: (value) => setState(() => _searchQuery = value),
               onScan: () => Navigator.pushNamed(context, AppRouter.scanner),
+              canUseDiseaseDetection: canUseDiseaseDetection,
             ),
             error: (error, _) => _ErrorState(
               message: 'Không tải được danh sách lô nông sản.\n$error',
@@ -165,6 +173,7 @@ class _FarmerDashboardScreenState extends ConsumerState<FarmerDashboardScreen> {
                         actions: _buildQuickActions(
                           context,
                           onInventoryTap: () => ref.invalidate(batchListProvider),
+                          includeDiseaseDetection: canUseDiseaseDetection,
                         ),
                       ),
                     ),
@@ -291,6 +300,7 @@ class _DashboardLoading extends StatelessWidget {
     required this.controller,
     required this.onChanged,
     required this.onScan,
+    required this.canUseDiseaseDetection,
   });
 
   final String userName;
@@ -299,6 +309,7 @@ class _DashboardLoading extends StatelessWidget {
   final TextEditingController controller;
   final ValueChanged<String> onChanged;
   final VoidCallback onScan;
+  final bool canUseDiseaseDetection;
 
   @override
   Widget build(BuildContext context) {
@@ -345,7 +356,11 @@ class _DashboardLoading extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.only(left: 18),
           child: _QuickActionsGrid(
-            actions: _buildQuickActions(context, onInventoryTap: () {}),
+            actions: _buildQuickActions(
+              context,
+              onInventoryTap: () {},
+              includeDiseaseDetection: canUseDiseaseDetection,
+            ),
           ),
         ),
       ],
@@ -1439,6 +1454,7 @@ class _QuickActionData {
 List<_QuickActionData> _buildQuickActions(
   BuildContext context, {
   required VoidCallback onInventoryTap,
+  required bool includeDiseaseDetection,
 }) {
   return [
     _QuickActionData(
@@ -1481,11 +1497,12 @@ List<_QuickActionData> _buildQuickActions(
       label: 'Camera',
       onTap: () => Navigator.pushNamed(context, AppRouter.farmer),
     ),
-    _QuickActionData(
-      icon: Icons.health_and_safety_outlined,
-      label: 'Bệnh cây',
-      onTap: () => Navigator.pushNamed(context, AppRouter.diseaseDetection),
-    ),
+    if (includeDiseaseDetection)
+      _QuickActionData(
+        icon: Icons.health_and_safety_outlined,
+        label: 'Bệnh cây',
+        onTap: () => Navigator.pushNamed(context, AppRouter.diseaseDetection),
+      ),
     _QuickActionData(
       icon: Icons.delete_outline_rounded,
       label: 'Thùng rác',

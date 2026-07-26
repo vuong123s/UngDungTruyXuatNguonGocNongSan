@@ -19,7 +19,14 @@ class AccountScreen extends ConsumerWidget {
     final lastName = (user['last_name'] ?? '').toString();
     final displayName = (user['name'] ?? '$firstName $lastName').toString().trim();
     final email = (user['email'] ?? 'farmer@gmail.com').toString();
-    final role = (user['role'] ?? authData?['role'] ?? 'farmer').toString();
+    final role = (user['role'] ?? authData?['role'] ?? '')
+        .toString()
+        .toLowerCase();
+    final canUseDiseaseDetection = const {
+      'admin',
+      'manager',
+      'farmer',
+    }.contains(role);
     final phone = (user['phone'] ?? 'Chưa cập nhật').toString();
     final location = (user['address'] ?? 'Cái Bè, Tiền Giang').toString();
 
@@ -165,11 +172,15 @@ class AccountScreen extends ConsumerWidget {
                     label: 'Chứng nhận & kiểm nghiệm',
                     onTap: () => Navigator.pushNamed(context, '${AppRouter.management}?tab=2'),
                   ),
-                  _AccountAction(
-                    icon: Icons.health_and_safety_outlined,
-                    label: 'Nhận diện bệnh cây',
-                    onTap: () => Navigator.pushNamed(context, AppRouter.diseaseDetection),
-                  ),
+                  if (canUseDiseaseDetection)
+                    _AccountAction(
+                      icon: Icons.health_and_safety_outlined,
+                      label: 'Nhận diện bệnh cây',
+                      onTap: () => Navigator.pushNamed(
+                        context,
+                        AppRouter.diseaseDetection,
+                      ),
+                    ),
                   _AccountAction(
                     icon: Icons.delete_outline_rounded,
                     label: 'Thùng rác lô',

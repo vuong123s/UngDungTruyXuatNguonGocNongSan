@@ -1,14 +1,40 @@
 export class AppError extends Error {
   statusCode: number;
-  constructor(message: string, statusCode: number) {
+  code?: string;
+  details?: Record<string, unknown>;
+
+  constructor(
+    message: string,
+    statusCode: number,
+    code?: string,
+    details?: Record<string, unknown>
+  ) {
     super(message);
+    this.name = new.target.name;
     this.statusCode = statusCode;
+    this.code = code;
+    this.details = details;
+    Object.setPrototypeOf(this, new.target.prototype);
   }
 }
 
 export class BadRequestError extends AppError {
-  constructor(message: string) {
-    super(message, 400);
+  constructor(
+    message: string,
+    code?: string,
+    details?: Record<string, unknown>
+  ) {
+    super(message, 400, code, details);
+  }
+}
+
+export class UnprocessableEntityError extends AppError {
+  constructor(
+    message: string,
+    code?: string,
+    details?: Record<string, unknown>
+  ) {
+    super(message, 422, code, details);
   }
 }
 
@@ -31,7 +57,11 @@ export class UnauthorizedError extends AppError {
 }
 
 export class ServiceUnavailableError extends AppError {
-  constructor(message: string) {
-    super(message, 503);
+  constructor(
+    message: string,
+    code?: string,
+    details?: Record<string, unknown>
+  ) {
+    super(message, 503, code, details);
   }
 }

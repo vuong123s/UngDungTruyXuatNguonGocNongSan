@@ -3,6 +3,7 @@
   "version": "2.0.0",
   "private": true,
   "dependencies": {
+    "@fontsource/be-vietnam-pro": "^5.2.7",
     "axios": "^1.7.2",
     "qrcode.react": "^4.0.1",
     "react": "^18.3.1",

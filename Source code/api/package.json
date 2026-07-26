@@ -2,6 +2,9 @@
   "name": "agri-trace-api",
   "version": "2.0.0",
   "description": "Backend API for Agricultural Traceability with Blockchain",
+  "engines": {
+    "node": ">=20.9.0"
+  },
   "main": "dist/index.js",
   "scripts": {
     "dev": "nodemon",
@@ -26,8 +29,10 @@
     "mongoose": "^8.4.0",
     "morgan": "^1.10.0",
     "multer": "^1.4.5-lts.1",
+    "onnxruntime-node": "^1.27.0",
     "pdfkit": "^0.18.0",
     "qrcode": "^1.5.3",
+    "sharp": "^0.35.3",
     "validator": "^13.12.0"
   },
   "devDependencies": {

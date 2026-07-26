@@ -76,7 +76,7 @@ export const shadows = {
 };
 
 export const typography = {
-  fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+  fontFamily: '"Be Vietnam Pro", "Segoe UI", Arial, sans-serif',
   fontFamilyMono: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Monaco, Consolas, monospace',
   sizes: {
     xs: '12px',

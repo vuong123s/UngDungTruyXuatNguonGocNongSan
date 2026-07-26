@@ -9,7 +9,14 @@ export interface IDiseaseCandidate {
   risk_level: DiseaseRiskLevel;
   description: string;
   recommendations: string[];
+  crop_code?: string;
+  model_label?: string;
+  source_label?: string;
+  is_healthy?: boolean;
 }
+
+export type DiseaseAnalysisStatus = 'completed' | 'inconclusive' | 'legacy';
+export type DiseaseInferenceEngine = 'onnx' | 'rules';
 
 export interface IDiseaseDetection {
   product: Types.ObjectId;
@@ -21,6 +28,9 @@ export interface IDiseaseDetection {
   top_disease: IDiseaseCandidate;
   overall_risk: DiseaseRiskLevel;
   model_version: string;
+  analysis_status: DiseaseAnalysisStatus;
+  inference_engine: DiseaseInferenceEngine;
+  warnings: string[];
   detected_by: Types.ObjectId;
 }
 
@@ -36,6 +46,10 @@ const diseaseCandidateSchema = new Schema<IDiseaseCandidate>(
     },
     description: { type: String, required: true, trim: true },
     recommendations: { type: [String], default: [] },
+    crop_code: { type: String, trim: true },
+    model_label: { type: String, trim: true },
+    source_label: { type: String, trim: true },
+    is_healthy: { type: Boolean, default: false },
   },
   { _id: false }
 );
@@ -81,6 +95,22 @@ const diseaseDetectionSchema = new Schema<IDiseaseDetection>(
     model_version: {
       type: String,
       default: 'ruleset-v1',
+    },
+    analysis_status: {
+      type: String,
+      enum: ['completed', 'inconclusive', 'legacy'],
+      default: 'legacy',
+      required: true,
+    },
+    inference_engine: {
+      type: String,
+      enum: ['onnx', 'rules'],
+      default: 'rules',
+      required: true,
+    },
+    warnings: {
+      type: [String],
+      default: [],
     },
     detected_by: {
       type: Schema.Types.ObjectId,

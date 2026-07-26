@@ -32,6 +32,11 @@ export const productApi = {
   getAll: () =>
     axiosClient.get<{ products: Product[]; count: number }>('/products'),
 
+  getMine: () =>
+    axiosClient.get<{ products: Product[]; count: number }>(
+      '/products/my/products'
+    ),
+
   getById: (id: string) =>
     axiosClient.get<{ product: Product }>(`/products/${id}`),
 

@@ -10,6 +10,7 @@ import {
   useLocation,
   useNavigate,
 } from 'react-router-dom';
+import AccountPage from './pages/Account/AccountPage';
 import AdminPage from './pages/Admin/AdminPage';
 import CertificationPage from './pages/Certification/CertificationPage';
 import DashboardPage from './pages/Dashboard/DashboardPage';
@@ -19,6 +20,8 @@ import ExportPage from './pages/Export/ExportPage';
 import FarmingAreaPage from './pages/FarmingArea/FarmingAreaPage';
 import JournalPage from './pages/Journal/JournalPage';
 import LoginPage from './pages/Login/LoginPage';
+import OverviewPage from './pages/Overview/OverviewPage';
+import ProductDetailPage from './pages/ProductDetail/ProductDetailPage';
 import QualityInspectionPage from './pages/QualityInspection/QualityInspectionPage';
 import SupplyChainPage from './pages/SupplyChain/SupplyChainPage';
 import TraceDetailPage from './pages/TraceDetail/TraceDetailPage';
@@ -241,7 +244,9 @@ const AppShell: React.FC = () => {
       { to: '/certifications', label: 'Chứng nhận', icon: 'certificate' },
       { to: '/supply-chain', label: 'Chuỗi cung ứng', icon: 'supply' },
       { to: '/quality-inspections', label: 'Kiểm nghiệm', icon: 'quality' },
-      { to: '/disease-detection', label: 'Nhận diện sâu bệnh', icon: 'disease' },
+      ...(user?.role !== 'consumer'
+        ? [{ to: '/disease-detection', label: 'Nhận diện sâu bệnh', icon: 'disease' as IconName }]
+        : []),
       { to: '/export', label: 'Xuất báo cáo', shortLabel: 'Báo cáo', icon: 'report' },
       ...(user?.role === 'admin'
         ? [{ to: '/admin', label: 'Quản trị', icon: 'settings' as IconName }]
@@ -495,6 +500,7 @@ const AppShell: React.FC = () => {
                   <span className="agr-avatar agr-avatar--large">{initialsFromName(user?.name)}</span>
                   <div><strong>{user?.name || 'Người dùng'}</strong><small>{user?.email || roleLabel(user?.role)}</small></div>
                 </header>
+                <Link role="menuitem" to="/account"><Icon name="settings" size={18} />Hồ sơ tài khoản</Link>
                 {user?.role === 'admin' && <Link role="menuitem" to="/admin"><Icon name="settings" size={18} />Quản trị tài khoản</Link>}
                 <button role="menuitem" onClick={handleLogout} type="button"><Icon name="logout" size={18} />Đăng xuất</button>
               </section>
@@ -539,6 +545,15 @@ const ProductDashboardRoute: React.FC = () => {
   return <DashboardPage key={location.search} />;
 };
 
+const DiseaseDetectionRoute: React.FC = () => {
+  const { user } = useAuth();
+  return user?.role === 'consumer' ? (
+    <Navigate to="/" replace />
+  ) : (
+    <DiseaseDetectionPage />
+  );
+};
+
 const AppRoutes: React.FC = () => (
   <Routes>
     <Route path="/login" element={<LoginPage />} />
@@ -546,13 +561,15 @@ const AppRoutes: React.FC = () => (
 
     <Route element={<ProtectedRoute />}>
       <Route element={<AppShell />}>
-        <Route index element={<DashboardPage />} />
+        <Route index element={<OverviewPage />} />
         <Route path="/products" element={<ProductDashboardRoute />} />
+        <Route path="/products/:productId" element={<ProductDetailPage />} />
+        <Route path="/account" element={<AccountPage />} />
         <Route path="/add-event" element={<JournalPage />} />
         <Route path="/farming-areas" element={<FarmingAreaPage />} />
         <Route path="/supply-chain" element={<SupplyChainPage />} />
         <Route path="/certifications" element={<CertificationPage />} />
-        <Route path="/disease-detection" element={<DiseaseDetectionPage />} />
+        <Route path="/disease-detection" element={<DiseaseDetectionRoute />} />
         <Route path="/design-lab" element={<DesignLabPage />} />
         <Route path="/quality-inspections" element={<QualityInspectionPage />} />
         <Route path="/export" element={<ExportPage />} />

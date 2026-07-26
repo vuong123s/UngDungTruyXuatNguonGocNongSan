@@ -1,12 +1,16 @@
 export interface User {
-  _id: string;
-  name: string;
+  _id?: string;
+  userId?: string;
+  name?: string;
+  first_name?: string;
+  last_name?: string;
   email: string;
   avatar?: string;
   role: 'admin' | 'manager' | 'farmer' | 'consumer';
   phone?: string;
   address?: string;
-  createdAt: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface FarmingArea {
@@ -134,6 +138,9 @@ export interface QualityInspection {
 
 export type DiseaseRiskLevel = 'low' | 'medium' | 'high';
 
+export type DiseaseAnalysisStatus = 'completed' | 'inconclusive' | 'legacy';
+export type DiseaseInferenceEngine = 'onnx' | 'rules';
+
 export interface DiseaseCandidate {
   disease_code: string;
   disease_name: string;
@@ -141,6 +148,35 @@ export interface DiseaseCandidate {
   risk_level: DiseaseRiskLevel;
   description: string;
   recommendations: string[];
+  model_label?: string;
+  source_label?: string;
+  crop_code?: string;
+  is_healthy?: boolean;
+}
+
+export interface DiseaseSupportedCrop {
+  code: 'tomato' | 'bell_pepper' | string;
+  label: string;
+  aliases: string[];
+}
+
+export interface DiseaseDetectionCapabilities {
+  model: {
+    ready: boolean;
+    version: string | null;
+    inputSize: number;
+    maxImages: number;
+    minConfidence: number;
+  };
+  supportedCrops: DiseaseSupportedCrop[];
+  product?: {
+    _id: string;
+    name: string;
+    type: Product['type'];
+    supported: boolean;
+    cropCode?: string;
+    reason?: 'animal_product' | 'unsupported_crop';
+  };
 }
 
 export interface DiseaseDetection {
@@ -154,6 +190,9 @@ export interface DiseaseDetection {
   top_disease: DiseaseCandidate;
   overall_risk: DiseaseRiskLevel;
   model_version: string;
+  analysis_status?: DiseaseAnalysisStatus;
+  inference_engine?: DiseaseInferenceEngine;
+  warnings?: string[];
   detected_by: string | User;
   createdAt: string;
   updatedAt: string;
